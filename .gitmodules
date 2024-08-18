@@ -1,0 +1,3 @@
+[submodule "liburing"]
+	path = liburing
+	url = https://git.kernel.dk/liburing.git
