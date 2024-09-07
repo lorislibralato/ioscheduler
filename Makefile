@@ -1,7 +1,7 @@
 CC = clang
 BUILD_DIR = build
 
-src_files = main.c
+src_files = src/main.c
 obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o,$(src_files)) 
 INCLUDES = -I$(BUILD_DIR)/include/liburing/ -I$(BUILD_DIR)/include/
 CFLAGS = -O3 -Wall -Wextra -march=native -ffunction-sections -flto $(INCLUDES)
@@ -9,14 +9,15 @@ LDFLAGS = -flto -fuse-ld=gold
 LOADLIBES = -L$(BUILD_DIR)/lib
 
 liburing = $(BUILD_DIR)/lib/liburing.a
-obj = $(BUILD_DIR)/src/client_main.o
+obj = $(BUILD_DIR)/src/main.o
 
-bin = $(BUILD_DIR)/client
+bin = $(BUILD_DIR)/main
 
 .PHONY: build clean
 
 dir:
 	@mkdir -p $(BUILD_DIR)/src
+	@mkdir -p $(BUILD_DIR)/lib	
 
 $(liburing):
 	@$(MAKE) -j4 -C liburing install prefix=$(BUILD_DIR) CC=clang LIBURING_CFLAGS="-flto"
@@ -28,6 +29,7 @@ $(bin): $(obj_files) $(liburing) $(obj)
 	@$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^ 
 
 
+# build liburing first
 build: dir $(liburing) $(bin)
 
 clean_liburing:
@@ -35,4 +37,3 @@ clean_liburing:
 
 clean: clean_liburing
 	@rm -rf $(BUILD_DIR)
-	@rm -rf $(main)
