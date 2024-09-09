@@ -1,15 +1,14 @@
 CC = clang
 BUILD_DIR = build
 
-src_files = src/main.c
+src_files = src/main.c src/scheduler.c
 obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o,$(src_files)) 
 INCLUDES = -I$(BUILD_DIR)/include/liburing/ -I$(BUILD_DIR)/include/
 CFLAGS = -O3 -Wall -Wextra -march=native -ffunction-sections -flto $(INCLUDES)
-LDFLAGS = -flto -fuse-ld=gold
+LDFLAGS = -flto -fuse-ld=mold
 LOADLIBES = -L$(BUILD_DIR)/lib
 
 liburing = $(BUILD_DIR)/lib/liburing.a
-obj = $(BUILD_DIR)/src/main.o
 
 bin = $(BUILD_DIR)/main
 
@@ -25,7 +24,7 @@ $(liburing):
 $(BUILD_DIR)/%.o: %.c
 	@$(CC) $(CFLAGS) -c -o $@ $<
 
-$(bin): $(obj_files) $(liburing) $(obj)
+$(bin): $(obj_files) $(liburing)
 	@$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^ 
 
 
