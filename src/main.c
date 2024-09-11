@@ -9,7 +9,7 @@ struct thread_context context;
 
 int main(int argc, char *argv[])
 {
-    assert(argc == 2);
+    ASSERT(argc == 2);
 
     int fd;
     int ret;
@@ -27,22 +27,22 @@ int main(int argc, char *argv[])
         IORING_SETUP_CQSIZE;
 
     ret = io_uring_queue_init_params(ENTRIES, &context.ring, &context.params);
-    assert(ret == 0);
+    ASSERT(ret == 0);
 
     fd = open(argv[1], O_DIRECT | O_RDWR | O_CREAT, 0644);
-    assert(fd != -1);
+    ASSERT(fd != -1);
 
-    printf("fd = %d\n", fd);
+    LOG("fd = %d\n", fd);
 
     // ret = fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, (__u64)(1UL * (1UL << 30)));
-    // assert(ret != -1);
+    // ASSERT(ret != -1);
 
-#define STATS_BUF_LEN (1000 / BACKGROUND_STATUS_MS)
+#define STATS_BUF_LEN (1000 / 200)
     stats_bucket_init(&background_write_stats, STATS_BUF_LEN);
     stats_bucket_init(&background_read_stats, STATS_BUF_LEN);
 
     background_writer_init(fd);
-    // background_reader_init(fd);
+    background_reader_init(fd);
     background_flusher_init(fd);
     background_status_init();
 
@@ -51,10 +51,10 @@ int main(int argc, char *argv[])
     while (1)
     {
         ret = io_uring_submit(&context.ring);
-        assert(ret >= 0);
+        ASSERT(ret >= 0);
 
         ret = io_tick(&context.ring);
-        assert(ret >= 0);
+        ASSERT(ret >= 0);
     }
 
     return 0;

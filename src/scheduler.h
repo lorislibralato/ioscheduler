@@ -7,20 +7,32 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/socket.h>
-#include <arpa/inet.h>
+#include <arpa/inet.h> 
 #include <fcntl.h>
 #include <time.h>
 #include "liburing.h"
 
 #define ENTRIES (1 << 12)
 #define PAGE_SZ (1 << 12)
-#define BUF_SIZE (PAGE_SZ << 0)
+#define BUF_SIZE (PAGE_SZ << 6)
 
 #define TIME_MS(x) (x * 1000 * 1000)
 
 #define WRITE_TIMEOUT_MS (TIME_MS(5))
 #define BACKGROUND_STATUS_MS (TIME_MS(200))
 #define BACKGROUND_FLUSH_MS (TIME_MS(100))
+
+#ifdef ASSERTION
+#define ASSERT(x) assert(x)
+#else
+#define ASSERT(x)
+#endif
+
+#ifdef DEBUG
+#define LOG(format, ...) printf(format, __VA_ARGS__)
+#else
+#define LOG(format, ...)
+#endif
 
 struct op;
 typedef int (*op_callback_t)(struct op *op, struct io_uring_cqe *cqe);

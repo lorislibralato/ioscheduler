@@ -1,8 +1,8 @@
-### Update
-`git pull origin main && git submodule update --remote`
+### Update deps
+`git submodule init && git submodule update --remote`
 
 ### Compile
-`make build BUILD_DIR=$(pwd)/build`
+`make build`
 
 ### Run
 `rm -f test.db && ./build/main test.db`

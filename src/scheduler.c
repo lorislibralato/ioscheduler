@@ -24,18 +24,19 @@ int io_tick(struct io_uring *ring)
         if (cqe->res >= 0 || cqe->res == -ETIME)
         {
             op = (struct op *)cqe->user_data;
-            printf("cqe_res = %d | func = %p\n", cqe->res, op->callback);
+            LOG("cqe_res = %d | func = %p\n", cqe->res, op->callback);
 
             if (cqe->res == -ETIME)
-                assert(op->callback == background_flusher ||
+                ASSERT(op->callback == background_flusher ||
                        op->callback == background_status ||
-                       op->callback == background_writer);
-            assert(op);
+                       op->callback == background_writer ||
+                       op->callback == background_reader);
+            ASSERT(op);
             op->callback(op, cqe);
         }
         else
         {
-            printf("cqe err: %d - %s\n", -cqe->res, strerror(-cqe->res));
+            LOG("cqe err: %d - %s\n", -cqe->res, strerror(-cqe->res));
         }
 
         count++;
@@ -62,9 +63,9 @@ int page_written(struct op *base_op, struct io_uring_cqe *cqe)
 {
     (void)cqe;
     struct op_page_write *op = (struct op_page_write *)base_op;
-    printf("op: %p\n", op);
-    assert(op != NULL);
-    // TODO: assert(op->page_id == page_id_check_order);
+    LOG("op: %p\n", op);
+    ASSERT(op != NULL);
+    // TODO: ASSERT(op->page_id == page_id_check_order);
     page_id_check_order++;
 
     struct page_write_node *list = &context.flusher_job.write_list;
@@ -89,7 +90,7 @@ int page_read(struct op *base_op, struct io_uring_cqe *cqe)
 {
     (void)cqe;
     struct op_page_read *op = (struct op_page_read *)base_op;
-    assert(op);
+    ASSERT(op);
     // TODO: implement
 
     return 0;
@@ -99,7 +100,7 @@ int file_synced(struct op *base_op, struct io_uring_cqe *cqe)
 {
     (void)cqe;
     struct op_file_synced *op = (struct op_file_synced *)base_op;
-    assert(op);
+    ASSERT(op);
 
     context.writer_job.written = 0;
 
@@ -123,17 +124,20 @@ int background_reader(struct op *base_op, struct io_uring_cqe *cqe)
 {
     (void)cqe;
     struct reader_job *op = (struct reader_job *)base_op;
-    assert(op);
-    __u32 i = 0;
+    ASSERT(op);
 
-    struct io_uring_sqe *sqe;
-    struct op_page_read *op_page_read = malloc(sizeof(struct op_page_read));
-    assert(op_page_read);
-    op_page_read->page_id = op->page_id + i;
+    // struct io_uring_sqe *sqe;
+    // struct op_page_read *op_page_read = malloc(sizeof(struct op_page_read));
+    // ASSERT(op_page_read);
+    // __u32 i = 0;
+    // op_page_read->page_id = op->page_id + i;
 
-    sqe = io_prepare_sqe(&context.ring, &op_page_read->inner, page_read);
-    assert(sqe);
+    // sqe = io_prepare_sqe(&context.ring, &op_page_read->inner, page_read);
+    // ASSERT(sqe);
     // io_uring_prep_read(sqe, op->fd, op->buf, BUF_SIZE, (__u64)(BUF_SIZE) * ((__u64)op->page_id + i));
+
+    int ret = resend_job(&context.ring, &op->op);
+    ASSERT(!ret);
 
     return 0;
 }
@@ -142,7 +146,7 @@ int background_writer(struct op *base_op, struct io_uring_cqe *cqe)
 {
     (void)cqe;
     struct writer_job *op = (struct writer_job *)base_op;
-    assert(op);
+    ASSERT(op);
 
     struct io_uring_sqe *sqe;
     struct op_page_write *op_page_write;
@@ -160,20 +164,21 @@ int background_writer(struct op *base_op, struct io_uring_cqe *cqe)
     for (; i < op->batch_size; i++)
     {
         op_page_write = malloc(sizeof(struct op_page_write));
-        assert(op_page_write);
+        ASSERT(op_page_write);
         op_page_write->page_id = op->page_id + i;
         op_page_write->next = NULL;
         op_page_write->user_fsync_callback = NULL;
-        sqe = io_prepare_sqe(&context.ring, &op_page_write->inner, page_written);
-        assert(sqe);
+        sqe = io_prepare_sqe(&context.ring, &(op_page_write->inner), page_written);
+        ASSERT(sqe);
         io_uring_prep_write(sqe, op->fd, op->buf, BUF_SIZE, (__u64)(BUF_SIZE) * ((__u64)op_page_write->page_id));
+        LOG("write op: %p\n", op_page_write);
 
         op->inflight++;
     }
     op->page_id += op->batch_size;
 
     int ret = resend_job(&context.ring, &op->op);
-    assert(!ret);
+    ASSERT(!ret);
 
     return 0;
 }
@@ -182,20 +187,20 @@ int background_flusher(struct op *base_op, struct io_uring_cqe *cqe)
 {
     (void)cqe;
     struct flusher_job *op = (struct flusher_job *)base_op;
-    assert(op);
+    ASSERT(op);
 
     struct io_uring_sqe *sqe;
 
     if (context.writer_job.written && !op->running)
     {
         sqe = io_prepare_sqe(&context.ring, (struct op *)&op->op_fsync, file_synced);
-        assert(sqe);
+        ASSERT(sqe);
         io_uring_prep_fsync(sqe, op->fd, 0);
         op->running = 1;
     }
 
     int ret = resend_job(&context.ring, &op->op);
-    assert(!ret);
+    ASSERT(!ret);
 
     return 0;
 }
@@ -205,7 +210,7 @@ int background_status(struct op *base_op, struct io_uring_cqe *cqe)
     (void)cqe;
 
     struct status_job *op = (struct status_job *)base_op;
-    assert(op);
+    ASSERT(op);
 
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
@@ -224,13 +229,14 @@ int background_status(struct op *base_op, struct io_uring_cqe *cqe)
     op->last_time = now;
 
     int ret = resend_job(&context.ring, &op->op);
-    assert(!ret);
+    ASSERT(!ret);
     return 0;
 }
 
+static char buf[BUF_SIZE] = {'a'};
+
 void background_writer_init(int fd)
 {
-    static char buf[BUF_SIZE] = {'a'};
     int ret;
 
     context.writer_job.buf = buf;
@@ -238,11 +244,11 @@ void background_writer_init(int fd)
     context.writer_job.page_id = 0;
     context.writer_job.inflight = 0;
     context.writer_job.written = 0;
-    context.writer_job.batch_size = 1;
+    context.writer_job.batch_size = 0;
     ret = create_job(&context.ring, &context.writer_job.op, WRITE_TIMEOUT_MS, 0, background_writer);
-    assert(!ret);
-    assert(context.writer_job.op.inner.callback == background_writer);
-    printf("created writed job: %p\n", background_writer);
+    ASSERT(!ret);
+    ASSERT(context.writer_job.op.inner.callback == background_writer);
+    LOG("created writed job: %p\n", background_writer);
 }
 
 void background_reader_init(int fd)
@@ -251,7 +257,7 @@ void background_reader_init(int fd)
     context.reader_job.fd = fd;
     context.reader_job.page_id = 0;
     ret = create_job(&context.ring, &context.reader_job.op, WRITE_TIMEOUT_MS, 0, background_reader);
-    assert(!ret);
+    ASSERT(!ret);
 }
 
 void background_flusher_init(int fd)
@@ -261,10 +267,10 @@ void background_flusher_init(int fd)
     context.flusher_job.running = 0;
     context.flusher_job.write_list.head = context.flusher_job.write_list.tail = NULL;
     ret = create_job(&context.ring, &context.flusher_job.op, BACKGROUND_FLUSH_MS, 0, background_flusher);
-    assert(!ret);
-    assert(context.flusher_job.op.inner.callback == background_flusher);
+    ASSERT(!ret);
+    ASSERT(context.flusher_job.op.inner.callback == background_flusher);
 
-    printf("created flusher job: %p\n", background_flusher);
+    LOG("created flusher job: %p\n", background_flusher);
 }
 
 void background_status_init()
@@ -273,10 +279,10 @@ void background_status_init()
 
     clock_gettime(CLOCK_REALTIME, &context.status_job.last_time);
     ret = create_job(&context.ring, &context.status_job.op, BACKGROUND_STATUS_MS, 0, background_status);
-    assert(!ret);
-    assert(context.status_job.op.inner.callback == background_status);
+    ASSERT(!ret);
+    ASSERT(context.status_job.op.inner.callback == background_status);
 
-    printf("created status job: %p\n", background_status);
+    LOG("created status job: %p\n", background_status);
 }
 
 int create_job(struct io_uring *ring, struct op_job *op, unsigned long nsec, unsigned long sec, op_callback_t callback)
@@ -289,7 +295,7 @@ int create_job(struct io_uring *ring, struct op_job *op, unsigned long nsec, uns
     op->ts.tv_nsec = nsec;
     op->ts.tv_sec = sec;
     io_uring_prep_timeout(sqe, &op->ts, 0, 0);
-    printf("created job for: %p\n", callback);
+    LOG("created job for: %p\n", callback);
     return 0;
 }
 
@@ -301,7 +307,7 @@ int resend_job(struct io_uring *ring, struct op_job *op)
         return 1;
 
     io_uring_prep_timeout(sqe, &op->ts, 0, 0);
-    printf("resend job for: %p\n", op->inner.callback);
+    LOG("resend job for: %p\n", op->inner.callback);
     return 0;
 }
 
@@ -310,8 +316,8 @@ void stats_bucket_init(struct stats_bucket *bucket, __u32 len)
     bucket->acc = 0;
     bucket->idx = 0;
     bucket->len = len;
-    bucket->buf = (__u32 *)calloc(sizeof(__u32), len);
-    assert(bucket->buf);
+    bucket->buf = (__u32 *)calloc(len, sizeof(__u32));
+    ASSERT(bucket->buf);
     // TODO: check calloc error
 }
 
@@ -323,7 +329,7 @@ void stats_bucket_add(struct stats_bucket *bucket)
 
 void stats_bucket_move(struct stats_bucket *bucket)
 {
-    unsigned int next_idx = ++bucket->idx % bucket->len;
+    unsigned int next_idx = (++bucket->idx) % bucket->len;
     bucket->acc -= bucket->buf[next_idx];
     bucket->buf[next_idx] = 0;
 }
