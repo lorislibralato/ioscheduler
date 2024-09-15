@@ -3,7 +3,7 @@ LD = mold
 BUILD_DIR = build
 
 src_files = src/main.c src/scheduler.c
-obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o,$(src_files)) 
+obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o,$(src_files))
 INCLUDES = -I$(BUILD_DIR)/include/liburing/ -I$(BUILD_DIR)/include/
 CFLAGS = -O3 -Wall -Wextra -march=native -ffunction-sections -flto $(INCLUDES) -include src/configure.h
 LDFLAGS = -flto -fuse-ld=$(LD)
@@ -11,16 +11,14 @@ LOADLIBES = -L$(BUILD_DIR)/lib
 
 # deps file
 override CFLAGS += -MT "$@" -MMD -MP -MF "$@.d"
--include $(obj_files:%=%.d)
 
 liburing = $(BUILD_DIR)/lib/liburing.a
-bin = $(BUILD_DIR)/main
+bin_scheduler = $(BUILD_DIR)/ioscheduler
+bin_legacy = $(BUILD_DIR)/legacy
 configure_output = liburing/config-host.mak
 configure_file = liburing/configure
 
-.PHONY: all build clean
-default: all
-all: build
+all: build_scheduler build_legacy
 
 dir:
 	@mkdir -p $(BUILD_DIR)
@@ -40,16 +38,23 @@ $(liburing): liburing/config-host.mak
 	@$(MAKE) -C liburing/src install ENABLE_SHARED=0 MAKEFLAGS="s" CC=$(CC) LIBURING_CFLAGS="-flto"
 	@echo $@
 
+-include $(obj_files:%=%.d)
 $(BUILD_DIR)/%.o: %.c
 	@$(CC) $(CFLAGS) -c -o $@ $<
 	@echo $@
 
-$(bin): $(liburing) $(obj_files)
+$(bin_scheduler): $(liburing) $(obj_files)
 	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
 	@echo $@
 
-# build liburing first
-build: dir $(bin)
+-include $(BUILD_DIR)/src/main_legacy.o.d
+$(bin_legacy): $(BUILD_DIR)/src/main_legacy.o
+	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
+	@echo $@
+
+build_scheduler: dir $(bin_scheduler)
+
+build_legacy: dir $(bin_legacy)
 
 clean_liburing:
 	@rm -rf liburing/config-host.mak
