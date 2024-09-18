@@ -105,12 +105,15 @@ int page_read(struct op *base_op, struct io_uring_cqe *cqe)
     struct op_page_read *op = (struct op_page_read *)base_op;
     ASSERT(op);
 
+    ASSERT(memcmp(buf, op->buf, 8) == 0);
     ASSERT(memcmp(buf, op->buf, BUF_SIZE) == 0);
 
     context.reader_job.inflight--;
     stats_bucket_add(&background_read_stats);
 
-    free(op->buf);
+    if (op->buf != buf)
+        free(op->buf);
+
     free(op);
 
     return 0;
@@ -167,7 +170,8 @@ int background_reader(struct op *base_op, struct io_uring_cqe *cqe)
     {
         op_page_read = malloc(sizeof(struct op_page_read));
         ASSERT(op_page_read);
-        op_page_read->buf = malloc(BUF_SIZE);
+        // op_page_read->buf = malloc(BUF_SIZE);
+        op_page_read->buf = buf;
         ASSERT(op_page_read->buf);
         op_page_read->page_id = op->page_id + i;
         sqe = io_prepare_sqe(&context.ring, &op_page_read->inner, page_read);
