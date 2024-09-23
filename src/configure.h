@@ -1,2 +1,2 @@
 #define ASSERTION
-// #define DEBUG
+#define DEBUG

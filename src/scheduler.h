@@ -36,7 +36,7 @@ struct op_page_write
 {
     struct op inner;
     unsigned int page_id;
-    int (*user_fsync_callback)();
+    int (*user_fsync_callback)(void);
     struct op_page_write *next;
 };
 
@@ -140,8 +140,8 @@ int background_tracing(struct op *base_op, struct io_uring_cqe *cqe);
 void background_writer_init(int fd);
 void background_reader_init(int fd);
 void background_flusher_init(int fd);
-void background_status_init();
-void background_tracing_init();
+void background_status_init(void);
+void background_tracing_init(void);
 
 struct stats_bucket_item
 {

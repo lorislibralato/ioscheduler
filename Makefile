@@ -2,12 +2,18 @@ CC = clang
 LD = mold
 BUILD_DIR = build
 
-src_files = src/main.c src/scheduler.c
-obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o,$(src_files))
+src_files = src/main.c src/scheduler.c src/btree.c
+src_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(src_files))
+
+test_files = test/test_btree_node.c
+test_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(test_files))
+test_targets = $(patsubst %.c, $(BUILD_DIR)/%, $(test_files)) 
+
 INCLUDES = -I$(BUILD_DIR)/include/liburing/ -I$(BUILD_DIR)/include/
-CFLAGS = -O3 -Wall -Wextra -march=native -ffunction-sections -flto $(INCLUDES) -include src/configure.h
+CFLAGS = -std=c23 -O3 -Wall -Wextra -march=native -ffunction-sections -Wno-gnu-statement-expression -Wno-zero-length-array -flto $(INCLUDES) -include src/configure.h
 LDFLAGS = -flto -fuse-ld=$(LD)
 LOADLIBES = -L$(BUILD_DIR)/lib
+LIBURING_CFLAGS = -flto -std=c23 -march=native -Wno-zero-length-array -Wno-gnu-statement-expression -Wno-gnu-pointer-arith 
 
 # deps file
 override CFLAGS += -MT "$@" -MMD -MP -MF "$@.d"
@@ -18,11 +24,12 @@ bin_legacy = $(BUILD_DIR)/legacy
 configure_output = liburing/config-host.mak
 configure_file = liburing/configure
 
-all: build_scheduler build_legacy
+all: build_scheduler build_legacy tests
 
 dir:
 	@mkdir -p $(BUILD_DIR)
 	@mkdir -p $(BUILD_DIR)/src
+	@mkdir -p $(BUILD_DIR)/test
 
 $(configure_output): $(configure_file)
 	+@cd liburing && \
@@ -35,15 +42,15 @@ $(configure_output): $(configure_file)
 	fi
 
 $(liburing): liburing/config-host.mak
-	@$(MAKE) -C liburing/src install ENABLE_SHARED=0 MAKEFLAGS="s" CC=$(CC) LIBURING_CFLAGS="-flto"
+	@$(MAKE) -C liburing/src install ENABLE_SHARED=0 MAKEFLAGS="s" CC=$(CC) LIBURING_CFLAGS="$(LIBURING_CFLAGS)"
 	@echo $@
 
--include $(obj_files:%=%.d)
+-include $(src_obj_files:%=%.d)
 $(BUILD_DIR)/%.o: %.c
 	@$(CC) $(CFLAGS) -c -o $@ $<
 	@echo $@
 
-$(bin_scheduler): $(liburing) $(obj_files)
+$(bin_scheduler): $(liburing) $(src_obj_files)
 	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
 	@echo $@
 
@@ -52,9 +59,15 @@ $(bin_legacy): $(BUILD_DIR)/src/main_legacy.o
 	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
 	@echo $@
 
+$(test_targets): $(test_obj_files) $(src_obj_files)
+	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
+	@echo $@
+
 build_scheduler: dir $(bin_scheduler)
 
 build_legacy: dir $(bin_legacy)
+
+tests: dir $(test_targets)
 
 clean_liburing:
 	@rm -rf liburing/config-host.mak

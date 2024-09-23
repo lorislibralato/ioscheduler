@@ -2,15 +2,17 @@
 #define UTILS_H
 
 #ifdef ASSERTION
+#include <assert.h>
 #define ASSERT(x) assert(x)
 #else
 #define ASSERT(x)
 #endif
 
 #ifdef DEBUG
-#define LOG(format, ...) printf(format, __VA_ARGS__)
+#include <stdio.h>
+#define LOG(...) printf(__VA_ARGS__)
 #else
-#define LOG(format, ...)
+#define LOG(...)
 #endif
 
 #define TIME_US(x) ((__u64)(x) * 1000)

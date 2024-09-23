@@ -414,7 +414,7 @@ void background_flusher_init(int fd)
     LOG("created flusher job: %p\n", background_flusher);
 }
 
-void background_tracing_init()
+void background_tracing_init(void)
 {
     int ret;
 
@@ -438,7 +438,7 @@ void background_tracing_init()
     LOG("created status job: %p\n", background_tracing);
 }
 
-void background_status_init()
+void background_status_init(void)
 {
     int ret;
 
