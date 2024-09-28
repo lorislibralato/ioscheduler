@@ -24,7 +24,7 @@ bin_legacy = $(BUILD_DIR)/legacy
 configure_output = liburing/config-host.mak
 configure_file = liburing/configure
 
-all: build_scheduler build_legacy tests perf flamegraph
+all: build_scheduler build_legacy tests 
 
 dir:
 	@mkdir -p $(BUILD_DIR)
@@ -70,11 +70,11 @@ build_legacy: dir $(bin_legacy)
 tests: dir $(test_targets)
 
 perf: build_scheduler
-	rm -rf __test_perf.db
-	perf record -F 10000 --call-graph dwarf $(bin_scheduler) __test_perf.db
+	@rm -rf __test_perf.db
+	@perf record -F 10000 --call-graph dwarf $(bin_scheduler) __test_perf.db
 
 flamegraph:
-	perf script | ~/repo/FlameGraph/stackcollapse-perf.pl | ~/repo/FlameGraph/stackcollapse-recursive.pl | ~/repo/FlameGraph/flamegraph.pl > perf_flamegraph.svg
+	@perf script | ~/repo/FlameGraph/stackcollapse-perf.pl | ~/repo/FlameGraph/stackcollapse-recursive.pl | ~/repo/FlameGraph/flamegraph.pl > perf_flamegraph.svg
 
 clean_liburing:
 	@rm -rf liburing/config-host.mak

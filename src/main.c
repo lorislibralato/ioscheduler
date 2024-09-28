@@ -69,15 +69,37 @@ int main(int argc, char *argv[])
     background_tracing_init();
     background_status_init();
 
+    run_job(&context.ring, &context.writer_job.op);
+#ifdef ENABLE_READER
+    run_job(&context.ring, &context.reader_job.op);
+#endif
+#ifdef ENABLE_FLUSHER
+    run_job(&context.ring, &context.flusher_job.op);
+#endif
+#ifdef ENABLE_TRACING
+    run_job(&context.ring, &context.tracing_job.op);
+#endif
+    run_job(&context.ring, &context.status_job.op);
+
     printf("setup done!\n");
+
+    int submitted;
+    int consumed;
+    (void)submitted;
+    (void)consumed;
 
     while (1)
     {
         ret = io_uring_submit(&context.ring);
         ASSERT(ret >= 0);
+        submitted = ret;
 
         ret = io_tick(&context.ring);
         ASSERT(ret >= 0);
+        consumed = ret;
+
+        if (!context.writer_job.op.running && !context.flusher_job.op.running && !context.reader_job.op.running && !context.tracing_job.op.running)
+            break;
     }
 
     return 0;

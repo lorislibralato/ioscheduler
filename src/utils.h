@@ -5,14 +5,18 @@
 #include <assert.h>
 #define ASSERT(x) assert(x)
 #else
-#define ASSERT(x)
+#define ASSERT(x) (void)(x)
 #endif
 
 #ifdef DEBUG
 #include <stdio.h>
-#define LOG(...) printf(__VA_ARGS__)
+#define LOG(fmt, ...) printf(fmt, __VA_ARGS__)
 #else
-#define LOG(...)
+void no_effect_printf(const char *__restrict __fmt, ...)
+{
+  (void)__fmt;
+}
+#define LOG(fmt, ...) no_effect_printf(fmt, __VA_ARGS__)
 #endif
 
 #define TIME_US(x) ((__u64)(x) * 1000)

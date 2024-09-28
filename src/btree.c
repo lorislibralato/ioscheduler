@@ -135,7 +135,7 @@ int btree_node_insert(struct btree_node_hdr *hdr, void *key, __u16 key_len, void
 
     __u16 idx;
     int ret = btree_node_bin_search(hdr, key, key_len, &idx);
-    assert(!ret); // TODO: handle key already exists
+    ASSERT(!ret); // TODO: handle key already exists
 
     memmove(&tuple_hdrs[idx + 1], &tuple_hdrs[idx], (hdr->len - idx) * sizeof(struct btree_tuple_hdr));
     tuple_hdr = &tuple_hdrs[idx];

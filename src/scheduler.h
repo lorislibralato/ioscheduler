@@ -11,13 +11,14 @@
 #define WRITE_TIMEOUT_MS (TIME_MS(5))
 #define READ_TIMEOUT_MS (TIME_MS(100))
 #define BACKGROUND_STATUS_MS (TIME_MS(200))
-#define BACKGROUND_TRACING_MS (TIME_MS(5000))
+#define BACKGROUND_TRACING_MS (TIME_MS(1000))
 #define BACKGROUND_FLUSH_MS (TIME_MS(100))
 #define SPEEDTEST_RANGE_MS (TIME_MS(1500))
 #define BATCH_INCREMENT_PERCENT (1)
 #define INFLIGHT_LOW_RANGE (8)
 #define INFLIGHT_HIGH_RANGE (32)
 #define TRACING_SAMPLE (256)
+#define BYTES_TO_WRITE (2 * ((__u64)1 << 30))
 
 struct op;
 typedef int (*op_callback_t)(struct op *op, struct io_uring_cqe *cqe);
@@ -60,6 +61,7 @@ struct op_job
 {
     struct op inner;
     struct __kernel_timespec ts;
+    int running;
 };
 
 struct writer_job
@@ -131,7 +133,8 @@ int page_written(struct op *base_op, struct io_uring_cqe *cqe);
 int page_read(struct op *base_op, struct io_uring_cqe *cqe);
 int file_synced(struct op *base_op, struct io_uring_cqe *cqe);
 
-int create_job(struct io_uring *ring, struct op_job *op, unsigned long nsec, unsigned long sec, op_callback_t callback);
+void init_job(struct op_job *op, unsigned long nsec, unsigned long sec, op_callback_t callback);
+int run_job(struct io_uring *ring, struct op_job *op);
 int resend_job(struct io_uring *ring, struct op_job *op);
 
 int background_reader(struct op *base_op, struct io_uring_cqe *cqe);
