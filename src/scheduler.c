@@ -11,7 +11,10 @@
 #include "scheduler.h"
 #include "utils.h"
 
-static char buf[BUF_SIZE] = {'a'};
+#define BUF_BYTE ('a')
+
+static char write_buf[BUF_SIZE] = {BUF_BYTE};
+static char read_buf[BUF_SIZE] = {BUF_BYTE};
 
 int io_tick(struct io_uring *ring)
 {
@@ -81,6 +84,10 @@ int page_written(struct op *base_op, struct io_uring_cqe *cqe)
     ASSERT(op->page_id == page_id_check_order);
     page_id_check_order++;
 
+    struct timespec now;
+    int ret = clock_gettime(CLOCK_REALTIME, &now);
+    ASSERT(!ret);
+
     struct page_write_node *list = &context.flusher_job.write_list;
     if (!list->tail)
     {
@@ -94,7 +101,10 @@ int page_written(struct op *base_op, struct io_uring_cqe *cqe)
 
     context.writer_job.written_no_flush++;
     context.writer_job.inflight--;
-    stats_bucket_add(&background_write_stats);
+    stats_bucket_add_one(&background_write_count_stats);
+
+    __u64 elapsed_us = (TIME_S(now.tv_sec - op->issued.tv_sec) + (now.tv_nsec - op->issued.tv_nsec)) / TIME_US(1);
+    stats_bucket_add(&background_write_latency_stats, elapsed_us);
 
     return 0;
 }
@@ -105,13 +115,20 @@ int page_read(struct op *base_op, struct io_uring_cqe *cqe)
     struct op_page_read *op = (struct op_page_read *)base_op;
     ASSERT(op);
 
-    ASSERT(memcmp(buf, op->buf, 8) == 0);
-    ASSERT(memcmp(buf, op->buf, BUF_SIZE) == 0);
+    struct timespec now;
+    int ret = clock_gettime(CLOCK_REALTIME, &now);
+    ASSERT(!ret);
+
+    ASSERT(memcmp(write_buf, op->buf, 8) == 0);
+    ASSERT(memcmp(write_buf, op->buf, BUF_SIZE) == 0);
 
     context.reader_job.inflight--;
-    stats_bucket_add(&background_read_stats);
+    stats_bucket_add_one(&background_read_count_stats);
 
-    if (op->buf != buf)
+    __u64 elapsed_us = (TIME_S(now.tv_sec - op->issued.tv_sec) + (now.tv_nsec - op->issued.tv_nsec)) / TIME_US(1);
+    stats_bucket_add(&background_read_latency_stats, elapsed_us);
+
+    if (op->buf != read_buf)
         free(op->buf);
 
     free(op);
@@ -152,6 +169,7 @@ int background_reader(struct op *base_op, struct io_uring_cqe *cqe)
 
     struct io_uring_sqe *sqe;
     struct op_page_read *op_page_read;
+    int ret;
 
     if (op->inflight <= INFLIGHT_LOW_RANGE && op->batch_size < (ENTRIES >> 1))
     {
@@ -171,9 +189,11 @@ int background_reader(struct op *base_op, struct io_uring_cqe *cqe)
         op_page_read = malloc(sizeof(struct op_page_read));
         ASSERT(op_page_read);
         // op_page_read->buf = malloc(BUF_SIZE);
-        op_page_read->buf = buf;
-        ASSERT(op_page_read->buf);
+        op_page_read->buf = read_buf;
+        // ASSERT(op_page_read->buf);
         op_page_read->page_id = op->page_id + i;
+        ret = clock_gettime(CLOCK_REALTIME, &op_page_read->issued);
+        ASSERT(!ret);
         sqe = io_prepare_sqe(&context.ring, &op_page_read->inner, page_read);
         ASSERT(sqe);
         io_uring_prep_read(sqe, op->fd, op_page_read->buf, BUF_SIZE, (__u64)(BUF_SIZE) * ((__u64)op_page_read->page_id));
@@ -183,7 +203,7 @@ int background_reader(struct op *base_op, struct io_uring_cqe *cqe)
     op->inflight += op->batch_size;
     op->page_id += op->batch_size;
 
-    int ret = resend_job(&context.ring, &op->op);
+    ret = resend_job(&context.ring, &op->op);
     ASSERT(!ret);
 
     return 0;
@@ -197,6 +217,7 @@ int background_writer(struct op *base_op, struct io_uring_cqe *cqe)
 
     struct io_uring_sqe *sqe;
     struct op_page_write *op_page_write;
+    int ret;
 
     if (op->inflight <= INFLIGHT_LOW_RANGE && op->batch_size < (ENTRIES >> 1) && op->inflight < INFLIGHT_HIGH_RANGE)
     {
@@ -215,7 +236,9 @@ int background_writer(struct op *base_op, struct io_uring_cqe *cqe)
         op_page_write->page_id = op->page_id + i;
         op_page_write->next = NULL;
         op_page_write->user_fsync_callback = NULL;
-        sqe = io_prepare_sqe(&context.ring, &(op_page_write->inner), page_written);
+        ret = clock_gettime(CLOCK_REALTIME, &op_page_write->issued);
+        ASSERT(!ret);
+        sqe = io_prepare_sqe(&context.ring, &op_page_write->inner, page_written);
         ASSERT(sqe);
         io_uring_prep_write(sqe, op->fd, op->buf, BUF_SIZE, (__u64)(BUF_SIZE) * ((__u64)op_page_write->page_id));
         LOG("write op: %p\n", op_page_write);
@@ -223,7 +246,7 @@ int background_writer(struct op *base_op, struct io_uring_cqe *cqe)
     op->inflight += op->batch_size;
     op->page_id += op->batch_size;
 
-    int ret = resend_job(&context.ring, &op->op);
+    ret = resend_job(&context.ring, &op->op);
     ASSERT(!ret);
 
     return 0;
@@ -342,27 +365,31 @@ int background_status(struct op *base_op, struct io_uring_cqe *cqe)
     __u64 w_mbs_speed;
     __u64 r_mbs_speed;
 
-    if (background_write_stats.acc_time)
-        w_mbs_speed = (BUF_SIZE * background_write_stats.acc_val) * TIME_S(1) / background_write_stats.acc_time / (1 << 20);
+    if (background_write_count_stats.acc_time)
+        w_mbs_speed = (BUF_SIZE * background_write_count_stats.acc_val) * TIME_S(1) / background_write_count_stats.acc_time / (1 << 20);
     else
         w_mbs_speed = 0;
 
-    if (background_read_stats.acc_time)
-        r_mbs_speed = (BUF_SIZE * background_read_stats.acc_val) * TIME_S(1) / background_read_stats.acc_time / (1 << 20);
+    if (background_read_count_stats.acc_time)
+        r_mbs_speed = (BUF_SIZE * background_read_count_stats.acc_val) * TIME_S(1) / background_read_count_stats.acc_time / (1 << 20);
     else
         r_mbs_speed = 0;
 
-    printf("\33[2K\r inflight: r(%u)/w(%u) | iops: r(%llu)/w(%llu) | mb/s: r(%llu)/w(%llu) | batch: r(%u)/w(%u) | page_id: r(%u)/w(%u)/f(%u) | elapsed: r(%llu)/w(%llu) ms",
+    printf("\33[2K\r inflight: r(%u)/w(%u) | iops: r(%llu)/w(%llu) | mb/s: r(%llu)/w(%llu) | batch: r(%u)/w(%u) | page_id: r(%u)/w(%u)/f(%u) | latency: r(%llu)/w(%llu) ms | elapsed: r(%llu)/w(%llu) ms",
            context.reader_job.inflight, context.writer_job.inflight,
-           background_write_stats.acc_val, background_read_stats.acc_val,
+           background_write_count_stats.acc_val, background_read_count_stats.acc_val,
            r_mbs_speed, w_mbs_speed,
            context.reader_job.batch_size, context.writer_job.batch_size,
            context.reader_job.page_id, context.writer_job.page_id, context.flusher_job.page_id,
-           background_read_stats.acc_time / TIME_MS(1), background_write_stats.acc_time / TIME_MS(1));
+           background_read_latency_stats.acc_val / background_read_count_stats.acc_val * TIME_US(1) / TIME_MS(1),
+           background_write_latency_stats.acc_val / background_write_count_stats.acc_val * TIME_US(1) / TIME_MS(1),
+           background_read_count_stats.acc_time / TIME_MS(1), background_write_count_stats.acc_time / TIME_MS(1));
     fflush(stdout);
 
-    stats_bucket_move(&background_write_stats, elapsed);
-    stats_bucket_move(&background_read_stats, elapsed);
+    stats_bucket_move(&background_write_count_stats, elapsed);
+    stats_bucket_move(&background_read_count_stats, elapsed);
+    stats_bucket_move(&background_write_latency_stats, elapsed);
+    stats_bucket_move(&background_read_latency_stats, elapsed);
     op->last_time = now;
 
     ret = resend_job(&context.ring, &op->op);
@@ -374,7 +401,7 @@ void background_writer_init(int fd)
 {
     int ret;
 
-    context.writer_job.buf = buf;
+    context.writer_job.buf = write_buf;
     context.writer_job.fd = fd;
     context.writer_job.page_id = 0;
     context.writer_job.inflight = 0;
@@ -484,15 +511,14 @@ void stats_bucket_init(struct stats_bucket *bucket, __u32 len)
     bucket->idx = 0;
     bucket->acc_time = 0;
     bucket->len = len;
-    bucket->buf = (struct stats_bucket_item *)calloc(len, sizeof(struct stats_bucket_item));
+    bucket->buf = calloc(len, sizeof(struct stats_bucket_item));
     ASSERT(bucket->buf);
     // TODO: check calloc error
 }
 
-void stats_bucket_add(struct stats_bucket *bucket)
+void stats_bucket_add_one(struct stats_bucket *bucket)
 {
-    bucket->acc_val++;
-    bucket->buf[bucket->idx % bucket->len].val++;
+    stats_bucket_add(bucket, 1);
 }
 
 void stats_bucket_move(struct stats_bucket *bucket, __u64 elapsed)
@@ -503,4 +529,10 @@ void stats_bucket_move(struct stats_bucket *bucket, __u64 elapsed)
     bucket->acc_time += elapsed;
     bucket->buf[next_idx].val = 0;
     bucket->buf[next_idx].elapsed = elapsed;
+}
+
+void stats_bucket_add(struct stats_bucket *bucket, __u64 val)
+{
+    bucket->acc_val += val;
+    bucket->buf[bucket->idx % bucket->len].val += val;
 }

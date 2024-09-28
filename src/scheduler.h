@@ -6,7 +6,7 @@
 
 #define ENTRIES (1 << 14)
 #define PAGE_SZ (1 << 12)
-#define BUF_SIZE ((__u64)PAGE_SZ << 4)
+#define BUF_SIZE ((__u64)PAGE_SZ << 0)
 
 #define WRITE_TIMEOUT_MS (TIME_MS(3))
 #define READ_TIMEOUT_MS (TIME_MS(100))
@@ -38,6 +38,8 @@ struct op_page_write
     unsigned int page_id;
     int (*user_fsync_callback)(void);
     struct op_page_write *next;
+    struct timespec issued;
+    struct timespec completed;
 };
 
 struct page_write_node
@@ -51,6 +53,7 @@ struct op_page_read
     struct op inner;
     unsigned int page_id;
     void *buf;
+    struct timespec issued;
 };
 
 struct op_job
@@ -153,19 +156,22 @@ struct stats_bucket
 {
     struct stats_bucket_item *buf;
     __u64 acc_time;
-    __u32 len;
     __u64 acc_val;
+    __u32 len;
     __u32 idx;
 };
 
 void stats_bucket_init(struct stats_bucket *bucket, __u32 len);
 void stats_bucket_move(struct stats_bucket *bucket, __u64 elapsed);
-void stats_bucket_add(struct stats_bucket *bucket);
+void stats_bucket_add_one(struct stats_bucket *bucket);
+void stats_bucket_add(struct stats_bucket *bucket, __u64 val);
 
 extern unsigned int page_id_check_order;
 
-extern struct stats_bucket background_write_stats;
-extern struct stats_bucket background_read_stats;
+extern struct stats_bucket background_write_count_stats;
+extern struct stats_bucket background_read_count_stats;
+extern struct stats_bucket background_write_latency_stats;
+extern struct stats_bucket background_read_latency_stats;
 
 struct thread_context
 {

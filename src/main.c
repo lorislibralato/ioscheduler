@@ -12,8 +12,10 @@
 
 unsigned int page_id_check_order = 0;
 
-struct stats_bucket background_write_stats;
-struct stats_bucket background_read_stats;
+struct stats_bucket background_write_count_stats;
+struct stats_bucket background_read_count_stats;
+struct stats_bucket background_write_latency_stats;
+struct stats_bucket background_read_latency_stats;
 
 struct thread_context context;
 
@@ -48,8 +50,10 @@ int main(int argc, char *argv[])
     // ASSERT(ret != -1);
 
 #define STATS_BUF_LEN (SPEEDTEST_RANGE_MS / BACKGROUND_STATUS_MS)
-    stats_bucket_init(&background_write_stats, STATS_BUF_LEN);
-    stats_bucket_init(&background_read_stats, STATS_BUF_LEN);
+    stats_bucket_init(&background_write_count_stats, STATS_BUF_LEN);
+    stats_bucket_init(&background_read_count_stats, STATS_BUF_LEN);
+    stats_bucket_init(&background_write_latency_stats, STATS_BUF_LEN);
+    stats_bucket_init(&background_read_latency_stats, STATS_BUF_LEN);
 
     background_writer_init(fd);
     background_reader_init(fd);
