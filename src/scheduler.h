@@ -6,17 +6,17 @@
 
 #define ENTRIES (1 << 14)
 #define PAGE_SZ (1 << 12)
-#define BUF_SIZE ((__u64)PAGE_SZ << 0)
+#define BUF_SIZE ((__u64)PAGE_SZ << 4)
 
-#define WRITE_TIMEOUT_MS (TIME_MS(3))
+#define WRITE_TIMEOUT_MS (TIME_MS(5))
 #define READ_TIMEOUT_MS (TIME_MS(100))
-#define BACKGROUND_STATUS_MS (TIME_MS(500))
-#define BACKGROUND_TRACING_MS (TIME_MS(5))
+#define BACKGROUND_STATUS_MS (TIME_MS(200))
+#define BACKGROUND_TRACING_MS (TIME_MS(5000))
 #define BACKGROUND_FLUSH_MS (TIME_MS(100))
 #define SPEEDTEST_RANGE_MS (TIME_MS(1500))
 #define BATCH_INCREMENT_PERCENT (1)
-#define INFLIGHT_LOW_RANGE (128)
-#define INFLIGHT_HIGH_RANGE (1024)
+#define INFLIGHT_LOW_RANGE (8)
+#define INFLIGHT_HIGH_RANGE (32)
 #define TRACING_SAMPLE (256)
 
 struct op;
@@ -30,6 +30,7 @@ struct op
 struct op_file_synced
 {
     struct op inner;
+    struct timespec issued;
 };
 
 struct op_page_write
@@ -39,7 +40,6 @@ struct op_page_write
     int (*user_fsync_callback)(void);
     struct op_page_write *next;
     struct timespec issued;
-    struct timespec completed;
 };
 
 struct page_write_node
@@ -51,9 +51,9 @@ struct page_write_node
 struct op_page_read
 {
     struct op inner;
-    unsigned int page_id;
     void *buf;
     struct timespec issued;
+    unsigned int page_id;
 };
 
 struct op_job
@@ -172,6 +172,8 @@ extern struct stats_bucket background_write_count_stats;
 extern struct stats_bucket background_read_count_stats;
 extern struct stats_bucket background_write_latency_stats;
 extern struct stats_bucket background_read_latency_stats;
+extern struct stats_bucket background_fsync_latency_stats;
+extern struct stats_bucket background_fsync_count_stats;
 
 struct thread_context
 {

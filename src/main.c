@@ -16,6 +16,8 @@ struct stats_bucket background_write_count_stats;
 struct stats_bucket background_read_count_stats;
 struct stats_bucket background_write_latency_stats;
 struct stats_bucket background_read_latency_stats;
+struct stats_bucket background_fsync_latency_stats;
+struct stats_bucket background_fsync_count_stats;
 
 struct thread_context context;
 
@@ -49,11 +51,17 @@ int main(int argc, char *argv[])
     // ret = fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, (__u64)(16UL * (1UL << 30)));
     // ASSERT(ret != -1);
 
+    ASSERT(INFLIGHT_LOW_RANGE <= INFLIGHT_HIGH_RANGE);
+    ASSERT(BACKGROUND_STATUS_MS <= SPEEDTEST_RANGE_MS);
+    ASSERT(BATCH_INCREMENT_PERCENT >= 0);
+
 #define STATS_BUF_LEN (SPEEDTEST_RANGE_MS / BACKGROUND_STATUS_MS)
     stats_bucket_init(&background_write_count_stats, STATS_BUF_LEN);
     stats_bucket_init(&background_read_count_stats, STATS_BUF_LEN);
     stats_bucket_init(&background_write_latency_stats, STATS_BUF_LEN);
     stats_bucket_init(&background_read_latency_stats, STATS_BUF_LEN);
+    stats_bucket_init(&background_fsync_latency_stats, STATS_BUF_LEN);
+    stats_bucket_init(&background_fsync_count_stats, STATS_BUF_LEN);
 
     background_writer_init(fd);
     background_reader_init(fd);

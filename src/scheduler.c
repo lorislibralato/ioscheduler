@@ -142,6 +142,10 @@ int file_synced(struct op *base_op, struct io_uring_cqe *cqe)
     struct op_file_synced *op = (struct op_file_synced *)base_op;
     ASSERT(op);
 
+    struct timespec now;
+    int ret = clock_gettime(CLOCK_REALTIME, &now);
+    ASSERT(!ret);
+
     context.flusher_job.page_id += context.writer_job.written_no_flush;
     context.writer_job.written_no_flush = 0;
 
@@ -158,6 +162,10 @@ int file_synced(struct op *base_op, struct io_uring_cqe *cqe)
     }
     context.flusher_job.running = 0;
 
+    stats_bucket_add_one(&background_fsync_count_stats);
+    __u64 elapsed_us = (TIME_S(now.tv_sec - op->issued.tv_sec) + (now.tv_nsec - op->issued.tv_nsec)) / TIME_US(1);
+    stats_bucket_add(&background_fsync_latency_stats, elapsed_us);
+
     return 0;
 }
 
@@ -173,7 +181,7 @@ int background_reader(struct op *base_op, struct io_uring_cqe *cqe)
 
     if (op->inflight <= INFLIGHT_LOW_RANGE && op->batch_size < (ENTRIES >> 1))
     {
-        if (op->inflight == 0 && op->batch_size > 0 && op->inflight < INFLIGHT_HIGH_RANGE)
+        if (op->inflight == 0 && op->batch_size > 0)
             op->batch_size *= 2;
         else
             op->batch_size += max(1, op->batch_size * BATCH_INCREMENT_PERCENT / 100);
@@ -219,7 +227,7 @@ int background_writer(struct op *base_op, struct io_uring_cqe *cqe)
     struct op_page_write *op_page_write;
     int ret;
 
-    if (op->inflight <= INFLIGHT_LOW_RANGE && op->batch_size < (ENTRIES >> 1) && op->inflight < INFLIGHT_HIGH_RANGE)
+    if (op->inflight <= INFLIGHT_LOW_RANGE && op->batch_size < (ENTRIES >> 1))
     {
         if (op->inflight == 0 && op->batch_size > 0)
             op->batch_size *= 2;
@@ -259,16 +267,19 @@ int background_flusher(struct op *base_op, struct io_uring_cqe *cqe)
     ASSERT(op);
 
     struct io_uring_sqe *sqe;
+    int ret;
 
     if (context.writer_job.written_no_flush && !op->running)
     {
+        ret = clock_gettime(CLOCK_REALTIME, &op->op_fsync.issued);
+        ASSERT(!ret);
         sqe = io_prepare_sqe(&context.ring, (struct op *)&op->op_fsync, file_synced);
         ASSERT(sqe);
         io_uring_prep_fsync(sqe, op->fd, 0);
         op->running = 1;
     }
 
-    int ret = resend_job(&context.ring, &op->op);
+    ret = resend_job(&context.ring, &op->op);
     ASSERT(!ret);
 
     return 0;
@@ -362,27 +373,19 @@ int background_status(struct op *base_op, struct io_uring_cqe *cqe)
     __u64 drift_ns = (TIME_S(now.tv_sec - op->last_time.tv_sec - op->op.ts.tv_sec) + (now.tv_nsec - op->last_time.tv_nsec - op->op.ts.tv_nsec));
     (void)drift_ns;
 
-    __u64 w_mbs_speed;
-    __u64 r_mbs_speed;
+    __u64 w_mbs_speed = background_write_count_stats.acc_time ? (BUF_SIZE * background_write_count_stats.acc_val) * TIME_S(1) / background_write_count_stats.acc_time / (1 << 20) : 0;
+    __u64 r_mbs_speed = background_read_count_stats.acc_time ? (BUF_SIZE * background_read_count_stats.acc_val) * TIME_S(1) / background_read_count_stats.acc_time / (1 << 20) : 0;
+    __u64 r_latency = background_read_count_stats.acc_val ? background_read_latency_stats.acc_val / background_read_count_stats.acc_val * TIME_US(1) / TIME_MS(1) : 0;
+    __u64 w_latency = background_write_count_stats.acc_val ? background_write_latency_stats.acc_val / background_write_count_stats.acc_val * TIME_US(1) / TIME_MS(1) : 0;
+    __u64 f_latency = background_fsync_count_stats.acc_val ? background_fsync_latency_stats.acc_val / background_fsync_count_stats.acc_val * TIME_US(1) / TIME_MS(1) : 0;
 
-    if (background_write_count_stats.acc_time)
-        w_mbs_speed = (BUF_SIZE * background_write_count_stats.acc_val) * TIME_S(1) / background_write_count_stats.acc_time / (1 << 20);
-    else
-        w_mbs_speed = 0;
-
-    if (background_read_count_stats.acc_time)
-        r_mbs_speed = (BUF_SIZE * background_read_count_stats.acc_val) * TIME_S(1) / background_read_count_stats.acc_time / (1 << 20);
-    else
-        r_mbs_speed = 0;
-
-    printf("\33[2K\r inflight: r(%u)/w(%u) | iops: r(%llu)/w(%llu) | mb/s: r(%llu)/w(%llu) | batch: r(%u)/w(%u) | page_id: r(%u)/w(%u)/f(%u) | latency: r(%llu)/w(%llu) ms | elapsed: r(%llu)/w(%llu) ms",
+    printf("\33[2K\r inflight:r(%.4u)/w(%.4u) | iops:r(%.5llu)/w(%.5llu) mb/s:r(%.4llu)/w(%.4llu) | batch:r(%.5u)/w(%.5u) | pid:r(%.7u)/w(%.7u)/f(%.7u) | lat:r(%.3llu)/w(%.3llu)/f(%.3llu)ms | elapsed:r(%.5llu)/w(%.5llu) ms",
            context.reader_job.inflight, context.writer_job.inflight,
-           background_write_count_stats.acc_val, background_read_count_stats.acc_val,
+           background_read_count_stats.acc_val, background_write_count_stats.acc_val,
            r_mbs_speed, w_mbs_speed,
            context.reader_job.batch_size, context.writer_job.batch_size,
            context.reader_job.page_id, context.writer_job.page_id, context.flusher_job.page_id,
-           background_read_latency_stats.acc_val / background_read_count_stats.acc_val * TIME_US(1) / TIME_MS(1),
-           background_write_latency_stats.acc_val / background_write_count_stats.acc_val * TIME_US(1) / TIME_MS(1),
+           r_latency, w_latency, f_latency,
            background_read_count_stats.acc_time / TIME_MS(1), background_write_count_stats.acc_time / TIME_MS(1));
     fflush(stdout);
 
@@ -390,6 +393,8 @@ int background_status(struct op *base_op, struct io_uring_cqe *cqe)
     stats_bucket_move(&background_read_count_stats, elapsed);
     stats_bucket_move(&background_write_latency_stats, elapsed);
     stats_bucket_move(&background_read_latency_stats, elapsed);
+    stats_bucket_move(&background_fsync_latency_stats, elapsed);
+    stats_bucket_move(&background_fsync_count_stats, elapsed);
     op->last_time = now;
 
     ret = resend_job(&context.ring, &op->op);
