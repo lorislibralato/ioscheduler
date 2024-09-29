@@ -2,12 +2,12 @@ CC = clang
 LD = mold
 BUILD_DIR = build
 
-src_files = src/main.c src/scheduler.c src/btree.c
+src_files = src/main.c src/scheduler.c src/btree.c src/cbuf.c
 src_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(src_files))
 
-test_files = test/test_btree_node.c
+test_files = tests/test_btree_node.c tests/test_cbuf.c
 test_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(test_files))
-test_targets = $(patsubst %.c, $(BUILD_DIR)/%, $(test_files)) 
+test_targets = $(patsubst %.c, $(BUILD_DIR)/%.t, $(test_files)) 
 
 INCLUDES = -I$(BUILD_DIR)/include/liburing/ -I$(BUILD_DIR)/include/
 CFLAGS = -std=c23 -O3 -Wall -Wextra -march=native -ffunction-sections -Wno-gnu-statement-expression -Wno-zero-length-array -flto $(INCLUDES) -include src/configure.h
@@ -24,12 +24,12 @@ bin_legacy = $(BUILD_DIR)/legacy
 configure_output = liburing/config-host.mak
 configure_file = liburing/configure
 
-all: build_scheduler build_legacy tests 
+all: build_scheduler build_legacy tests
 
 dir:
 	@mkdir -p $(BUILD_DIR)
 	@mkdir -p $(BUILD_DIR)/src
-	@mkdir -p $(BUILD_DIR)/test
+	@mkdir -p $(BUILD_DIR)/tests
 
 $(configure_output): $(configure_file)
 	+@cd liburing && \
@@ -59,7 +59,7 @@ $(bin_legacy): $(BUILD_DIR)/src/main_legacy.o
 	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
 	@echo $@
 
-$(test_targets): $(test_obj_files) $(src_obj_files)
+$(BUILD_DIR)/%.t: %.c $(src_obj_files)
 	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
 	@echo $@
 

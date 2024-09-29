@@ -2,6 +2,7 @@
 #include <string.h>
 #include "../src/btree.h"
 #include "../src/utils.h"
+#define ASSERTION
 
 void insert_and_test(struct btree_node_hdr *hdr, void *key, void *data)
 {

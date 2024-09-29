@@ -10,6 +10,7 @@
 #include <liburing.h>
 #include "scheduler.h"
 #include "utils.h"
+#include "cbuf.h"
 
 #define BUF_BYTE ('a')
 
@@ -40,7 +41,7 @@ int io_tick(struct io_uring *ring)
         if (cqe->res >= 0 || cqe->res == -ETIME)
         {
             op = (struct op *)cqe->user_data;
-            LOG("cqe_res = %d | func = %p\n", cqe->res, op->callback);
+            // LOG("cqe_res = %d | func = %p\n", cqe->res, op->callback);
 
             if (cqe->res == -ETIME)
                 ASSERT(op->callback == background_flusher ||
@@ -212,7 +213,7 @@ int background_reader(struct op *base_op, struct io_uring_cqe *cqe)
         sqe = io_prepare_sqe(&context.ring, &op_page_read->inner, page_read);
         ASSERT(sqe);
         io_uring_prep_read(sqe, op->fd, op_page_read->buf, BUF_SIZE, (__u64)(BUF_SIZE) * ((__u64)op_page_read->page_id));
-        LOG("read op: %p\n", op_page_read);
+        // LOG("read op: %p\n", op_page_read);
     }
 
     op->inflight += op->batch_size;
@@ -261,7 +262,7 @@ int background_writer(struct op *base_op, struct io_uring_cqe *cqe)
         sqe = io_prepare_sqe(&context.ring, &op_page_write->inner, page_written);
         ASSERT(sqe);
         io_uring_prep_write(sqe, op->fd, op->buf, BUF_SIZE, (__u64)(BUF_SIZE) * ((__u64)op_page_write->page_id));
-        LOG("write op: %p\n", op_page_write);
+        // LOG("write op: %p\n", op_page_write);
     }
     op->inflight += op->batch_size;
     op->page_id += op->batch_size;
@@ -309,45 +310,35 @@ int background_flusher(struct op *base_op, struct io_uring_cqe *cqe)
 
 void dump_tracing_items(struct tracing_job *op)
 {
-    int ret;
-    int fd = open("trace.dat", O_RDWR | O_CREAT, 0644);
-    ASSERT(fd > 0);
+    // struct io_uring_sqe *sqe;
+    // sqe = io_prepare_sqe(&context.ring, (struct op *)&op->op_fsync, file_synced);
+    // ASSERT(sqe);
+    // io_uring_prep_fsync(sqe, op->fd, 0);
 
-    __u32 written = 0;
     int ret_n;
+    int ret;
 
-    __u32 to_write = op->buf_len - (op->head - op->tail);
+    struct tracing_item *buf;
+    __u32 items = cbuf_get(&op->cbuf, (void **)&buf);
+    __u32 len = items * sizeof(*buf);
+    __u32 last_offset = op->trace_synced;
+    __u32 written = 0;
 
-    char *first_half = (char *)(op->buf + (op->head % op->buf_len));
-    __u32 first_len = op->buf_len - (op->head % op->buf_len);
-
-    char *second_half = (char *)op->buf;
-    __u32 second_len = op->tail % op->buf_len;
-    ASSERT(first_len + second_len == to_write);
-
-    __u32 last_offset = op->trace_synced * sizeof(struct tracing_item);
-
-    while (written < first_len + second_len)
+    while (written < len)
     {
-        if (written < first_len)
-            ret_n = pwrite(fd, first_half + written, first_len - written, last_offset);
-        else
-            ret_n = pwrite(fd, second_half + written - first_len, first_len + second_len - written, last_offset);
-
+        ret_n = pwrite(op->fd, (void *)buf + written, len - written, last_offset);
         ASSERT(ret_n > 0);
         written += ret_n;
         last_offset += ret_n;
     }
 
-    ret = fsync(fd);
+    ret = fsync(op->fd);
     ASSERT(!ret);
 
-    op->trace_synced += to_write;
-    op->head += to_write;
+    op->trace_synced = last_offset;
+    cbuf_advance_head(&op->cbuf, items);
 
-    ret = close(fd);
-    ASSERT(!ret);
-    ASSERT(written == to_write);
+    ASSERT(written == len);
 }
 
 int background_tracing(struct op *base_op, struct io_uring_cqe *cqe)
@@ -358,7 +349,7 @@ int background_tracing(struct op *base_op, struct io_uring_cqe *cqe)
     struct tracing_job *op = (struct tracing_job *)base_op;
     ASSERT(op);
 
-    if (op->tail == op->head)
+    if (cbuf_is_full(&op->cbuf))
         dump_tracing_items(op);
 
     struct timespec now;
@@ -367,17 +358,21 @@ int background_tracing(struct op *base_op, struct io_uring_cqe *cqe)
 
     __u64 elapsed = (TIME_S(now.tv_sec) - op->start_time.tv_sec) + (now.tv_nsec - op->start_time.tv_nsec);
 
-    struct tracing_item *item = &op->buf[op->tail % op->buf_len];
-    item->ts = elapsed;
-    item->flush_page_id = context.flusher_job.page_id;
-    item->write_page_id = context.writer_job.page_id;
-    item->write_batch_size = context.writer_job.batch_size;
-    item->write_inflight = context.writer_job.inflight;
-    item->read_inflight = context.reader_job.inflight;
-    item->read_batch_size = context.reader_job.batch_size;
-    item->read_page_id = context.reader_job.page_id;
+    struct tracing_item *item;
+    __u32 free_space = cbuf_put(&op->cbuf, (void **)&item);
+    if (free_space)
+    {
+        item->ts = elapsed;
+        item->flush_page_id = context.flusher_job.page_id;
+        item->write_page_id = context.writer_job.page_id;
+        item->write_batch_size = context.writer_job.batch_size;
+        item->write_inflight = context.writer_job.inflight;
+        item->read_inflight = context.reader_job.inflight;
+        item->read_batch_size = context.reader_job.batch_size;
+        item->read_page_id = context.reader_job.page_id;
+    }
+    cbuf_advance_tail(&op->cbuf, 1);
 
-    op->tail++;
     op->trace_done++;
 
     if (context.writer_job.op.running || context.flusher_job.op.running || context.reader_job.op.running)
@@ -411,8 +406,8 @@ int background_status(struct op *base_op, struct io_uring_cqe *cqe)
     (void)drift_ns;
 
 #ifdef ENABLE_STATUS
-    __u64 w_mbs_speed = background_write_count_stats.acc_time ? (BUF_SIZE * background_write_count_stats.acc_val) * TIME_S(1) / background_write_count_stats.acc_time / (1 << 20) : 0;
-    __u64 r_mbs_speed = background_read_count_stats.acc_time ? (BUF_SIZE * background_read_count_stats.acc_val) * TIME_S(1) / background_read_count_stats.acc_time / (1 << 20) : 0;
+    __u64 w_mbs_speed = background_write_count_stats.acc_time ? (BUF_SIZE * background_write_count_stats.acc_val) * TIME_S(1) / background_write_count_stats.acc_time / BYTE_MB(1) : 0;
+    __u64 r_mbs_speed = background_read_count_stats.acc_time ? (BUF_SIZE * background_read_count_stats.acc_val) * TIME_S(1) / background_read_count_stats.acc_time / BYTE_MB(1) : 0;
     __u64 r_latency = background_read_count_stats.acc_val ? background_read_latency_stats.acc_val / background_read_count_stats.acc_val * TIME_US(1) / TIME_MS(1) : 0;
     __u64 w_latency = background_write_count_stats.acc_val ? background_write_latency_stats.acc_val / background_write_count_stats.acc_val * TIME_US(1) / TIME_MS(1) : 0;
     __u64 f_latency = background_fsync_count_stats.acc_val ? background_fsync_latency_stats.acc_val / background_fsync_count_stats.acc_val * TIME_US(1) / TIME_MS(1) : 0;
@@ -484,16 +479,16 @@ void background_tracing_init(void)
     ret = clock_gettime(CLOCK_REALTIME, &context.tracing_job.start_time);
     ASSERT(!ret);
 
-    context.tracing_job.buf_len = TRACING_SAMPLE;
-    ASSERT(context.tracing_job.buf_len % 2 == 0);
-    context.tracing_job.buf = malloc(sizeof(struct tracing_item) * context.tracing_job.buf_len);
-    ASSERT(context.tracing_job.buf);
+    int fd = open("trace.dat", O_RDWR | O_CREAT, 0644);
+    ASSERT(fd > 0);
 
-    context.tracing_job.head = context.tracing_job.buf_len;
-    context.tracing_job.tail = 0;
+    ASSERT(TRACING_BUF_LEN % 2 == 0);
+    cbuf_init(&context.tracing_job.cbuf, sizeof(struct tracing_item), TRACING_BUF_LEN);
+
+    context.tracing_job.fd = fd;
     context.tracing_job.trace_done = 0;
     context.tracing_job.trace_synced = 0;
-    ASSERT((context.tracing_job.head - context.tracing_job.tail) == context.tracing_job.buf_len);
+
     init_job(&context.tracing_job.op, BACKGROUND_TRACING_MS, 0, background_tracing);
     ASSERT(context.tracing_job.op.inner.callback == background_tracing);
 
@@ -538,7 +533,7 @@ int resend_job(struct io_uring *ring, struct op_job *op)
         return 1;
 
     io_uring_prep_timeout(sqe, &op->ts, 0, 0);
-    LOG("resend job for: %p\n", op->inner.callback);
+    // LOG("resend job for: %p\n", op->inner.callback);
     return 0;
 }
 

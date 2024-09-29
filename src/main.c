@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
 #endif
     run_job(&context.ring, &context.status_job.op);
 
-    printf("setup done!\n");
+    LOG("setup done!\n");
 
     int submitted;
     int consumed;

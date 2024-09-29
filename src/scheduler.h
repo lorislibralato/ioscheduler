@@ -2,23 +2,23 @@
 #define SCHEDULER_H
 
 #include <liburing.h>
+#include "cbuf.h"
 #include "utils.h"
 
 #define ENTRIES (1 << 14)
-#define PAGE_SZ (1 << 12)
-#define BUF_SIZE ((__u64)PAGE_SZ << 4)
+#define BUF_SIZE (BYTE_KB(1 << 6))
 
 #define WRITE_TIMEOUT_MS (TIME_MS(5))
 #define READ_TIMEOUT_MS (TIME_MS(100))
 #define BACKGROUND_STATUS_MS (TIME_MS(200))
-#define BACKGROUND_TRACING_MS (TIME_MS(1000))
+#define BACKGROUND_TRACING_MS (TIME_MS(10))
 #define BACKGROUND_FLUSH_MS (TIME_MS(100))
 #define SPEEDTEST_RANGE_MS (TIME_MS(1500))
 #define BATCH_INCREMENT_PERCENT (1)
 #define INFLIGHT_LOW_RANGE (8)
 #define INFLIGHT_HIGH_RANGE (32)
-#define TRACING_SAMPLE (256)
-#define BYTES_TO_WRITE (2 * ((__u64)1 << 30))
+#define TRACING_BUF_LEN (64)
+#define BYTES_TO_WRITE (BYTE_GB(4))
 
 struct op;
 typedef int (*op_callback_t)(struct op *op, struct io_uring_cqe *cqe);
@@ -118,12 +118,10 @@ struct tracing_job
 {
     struct op_job op;
     struct timespec start_time;
-    struct tracing_item *buf;
+    struct cbuf cbuf;
     __u64 trace_done;
     __u64 trace_synced;
-    __u32 buf_len;
-    __u32 head;
-    __u32 tail;
+    int fd;
 };
 
 struct io_uring_sqe *io_prepare_sqe(struct io_uring *ring, struct op *op, op_callback_t callback);
