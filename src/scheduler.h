@@ -18,7 +18,7 @@
 #define INFLIGHT_LOW_RANGE (8)
 #define INFLIGHT_HIGH_RANGE (32)
 #define TRACING_BUF_LEN (64)
-#define BYTES_TO_WRITE (BYTE_GB(4))
+#define BYTES_TO_WRITE (BYTE_GB(2))
 
 struct op;
 typedef int (*op_callback_t)(struct op *op, struct io_uring_cqe *cqe);
@@ -114,6 +114,15 @@ struct tracing_item
     __u32 read_batch_size;
 };
 
+struct tracing_dump_op
+{
+    struct op inner;
+    int fd;
+    __u32 to_write;
+    __u32 items;
+    __u8 inflight;
+};
+
 struct tracing_job
 {
     struct op_job op;
@@ -121,7 +130,7 @@ struct tracing_job
     struct cbuf cbuf;
     __u64 trace_done;
     __u64 trace_synced;
-    int fd;
+    struct tracing_dump_op dump_op;
 };
 
 struct io_uring_sqe *io_prepare_sqe(struct io_uring *ring, struct op *op, op_callback_t callback);
@@ -130,6 +139,8 @@ int io_tick(struct io_uring *ring);
 int page_written(struct op *base_op, struct io_uring_cqe *cqe);
 int page_read(struct op *base_op, struct io_uring_cqe *cqe);
 int file_synced(struct op *base_op, struct io_uring_cqe *cqe);
+int tracing_synced(struct op *base_op, struct io_uring_cqe *cqe);
+int tracing_writed(struct op *base_op, struct io_uring_cqe *cqe);
 
 void init_job(struct op_job *op, unsigned long nsec, unsigned long sec, op_callback_t callback);
 int run_job(struct io_uring *ring, struct op_job *op);

@@ -11,7 +11,6 @@
 #include <unistd.h>
 #include "utils.h"
 
-#define PAGE_SZ (1 << 12)
 #define BUF_SIZE ((__u64)PAGE_SZ << 10)
 static char buf[BUF_SIZE] = {'a'};
 

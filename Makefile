@@ -69,6 +69,10 @@ build_legacy: dir $(bin_legacy)
 
 tests: dir $(test_targets)
 
+run_tests: tests
+	@$(BUILD_DIR)/tests/test_cbuf.t
+	@$(BUILD_DIR)/tests/test_btree_node.t
+
 perf: build_scheduler
 	@rm -rf __test_perf.db
 	@perf record -F 10000 --call-graph dwarf $(bin_scheduler) __test_perf.db

@@ -42,4 +42,8 @@ void no_effect_printf(const char *__restrict __fmt, ...)
        __typeof__ (b) _b = (b); \
      _a < _b ? _a : _b; })
 
+#define container_of(ptr, type, member) ({               \
+   const typeof(((type *)0)->member) * __mptr = (ptr);   \
+   (type *)((char *)__mptr - offsetof(type, member)); })
+
 #endif
