@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
     fd = open(argv[1], O_DIRECT | O_RDWR | O_CREAT, 0644);
     ASSERT(fd != -1);
 
-    LOG("fd = %d\n", fd);
+    LOG("db file fd = %d\n", fd);
 
     ret = fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, (__u64)(16UL * (1UL << 30)));
     ASSERT(ret != -1);

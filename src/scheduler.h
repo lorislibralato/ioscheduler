@@ -66,39 +66,39 @@ struct op_job
 
 struct writer_job
 {
-    struct op_job op;
+    struct op_job inner;
     char *buf;
     int fd;
     __u32 page_id;
     __u32 batch_size;
     __u32 written_no_flush;
-    __u32 inflight;
     __u32 write_done;
+    __u8 inflight;
 };
 
 struct reader_job
 {
-    struct op_job op;
+    struct op_job inner;
     int fd;
     __u32 page_id;
-    __u32 inflight;
     __u32 batch_size;
     __u32 read_done;
+    __u8 inflight;
 };
 
 struct flusher_job
 {
-    struct op_job op;
+    struct op_job inner;
     struct op_file_synced op_fsync;
     struct page_write_node write_list;
     int fd;
-    int running;
     __u32 page_id;
+    __u8 inflight;
 };
 
 struct status_job
 {
-    struct op_job op;
+    struct op_job inner;
     struct timespec last_time;
 };
 
@@ -125,7 +125,7 @@ struct tracing_dump_op
 
 struct tracing_job
 {
-    struct op_job op;
+    struct op_job inner;
     struct timespec start_time;
     struct cbuf cbuf;
     __u64 trace_done;
@@ -134,7 +134,7 @@ struct tracing_job
 };
 
 struct io_uring_sqe *io_prepare_sqe(struct io_uring *ring, struct op *op, op_callback_t callback);
-int io_tick(struct io_uring *ring);
+unsigned int io_tick(struct io_uring *ring);
 
 int page_written(struct op *base_op, struct io_uring_cqe *cqe);
 int page_read(struct op *base_op, struct io_uring_cqe *cqe);
@@ -145,6 +145,7 @@ int tracing_writed(struct op *base_op, struct io_uring_cqe *cqe);
 void init_job(struct op_job *op, unsigned long nsec, unsigned long sec, op_callback_t callback);
 int run_job(struct io_uring *ring, struct op_job *op);
 int resend_job(struct io_uring *ring, struct op_job *op);
+void job_set_stopped(struct op_job *op);
 
 int background_reader(struct op *base_op, struct io_uring_cqe *cqe);
 int background_writer(struct op *base_op, struct io_uring_cqe *cqe);
@@ -198,6 +199,6 @@ struct thread_context
     struct io_uring ring;
 };
 
-extern struct thread_context context;
+extern struct thread_context thread_ctx;
 
 #endif

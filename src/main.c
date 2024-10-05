@@ -9,6 +9,7 @@
 #include <time.h>
 #include "utils.h"
 #include "scheduler.h"
+#include "configure.h"
 
 unsigned int page_id_check_order = 0;
 
@@ -19,7 +20,7 @@ struct stats_bucket background_read_latency_stats;
 struct stats_bucket background_fsync_latency_stats;
 struct stats_bucket background_fsync_count_stats;
 
-struct thread_context context;
+struct thread_context thread_ctx;
 
 int main(int argc, char *argv[])
 {
@@ -28,10 +29,10 @@ int main(int argc, char *argv[])
     int fd;
     int ret;
 
-    memset(&context.params, 0, sizeof(context.params));
+    memset(&thread_ctx.params, 0, sizeof(thread_ctx.params));
 
-    context.params.cq_entries = ENTRIES << 1;
-    context.params.flags =
+    thread_ctx.params.cq_entries = ENTRIES << 1;
+    thread_ctx.params.flags =
         // IORING_SETUP_SQPOLL |
         IORING_SETUP_COOP_TASKRUN |
         IORING_SETUP_TASKRUN_FLAG |
@@ -40,7 +41,7 @@ int main(int argc, char *argv[])
         IORING_SETUP_NO_SQARRAY |
         IORING_SETUP_CQSIZE;
 
-    ret = io_uring_queue_init_params(ENTRIES, &context.ring, &context.params);
+    ret = io_uring_queue_init_params(ENTRIES, &thread_ctx.ring, &thread_ctx.params);
     ASSERT(ret == 0);
 
     fd = open(argv[1], O_DIRECT | O_RDWR | O_CREAT, 0644);
@@ -69,17 +70,17 @@ int main(int argc, char *argv[])
     background_tracing_init();
     background_status_init();
 
-    run_job(&context.ring, &context.writer_job.op);
+    run_job(&thread_ctx.ring, &thread_ctx.writer_job.inner);
 #ifdef ENABLE_READER
-    run_job(&context.ring, &context.reader_job.op);
+    run_job(&thread_ctx.ring, &thread_ctx.reader_job.inner);
 #endif
 #ifdef ENABLE_FLUSHER
-    run_job(&context.ring, &context.flusher_job.op);
+    run_job(&thread_ctx.ring, &thread_ctx.flusher_job.inner);
 #endif
 #ifdef ENABLE_TRACING
-    run_job(&context.ring, &context.tracing_job.op);
+    run_job(&thread_ctx.ring, &thread_ctx.tracing_job.inner);
 #endif
-    run_job(&context.ring, &context.status_job.op);
+    run_job(&thread_ctx.ring, &thread_ctx.status_job.inner);
 
     LOG("setup done!\n");
 
@@ -90,15 +91,15 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        ret = io_uring_submit(&context.ring);
+        ret = io_uring_submit(&thread_ctx.ring);
         ASSERT(ret >= 0);
         submitted = ret;
 
-        ret = io_tick(&context.ring);
+        ret = io_tick(&thread_ctx.ring);
         ASSERT(ret >= 0);
         consumed = ret;
 
-        if (!context.writer_job.op.running && !context.flusher_job.op.running && !context.reader_job.op.running && !context.tracing_job.op.running)
+        if (!thread_ctx.writer_job.inner.running && !thread_ctx.flusher_job.inner.running && !thread_ctx.reader_job.inner.running && !thread_ctx.tracing_job.inner.running)
             break;
     }
 

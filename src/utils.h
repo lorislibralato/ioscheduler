@@ -46,4 +46,10 @@ void no_effect_printf(const char *__restrict __fmt, ...)
    const typeof(((type *)0)->member) * __mptr = (ptr);   \
    (type *)((char *)__mptr - offsetof(type, member)); })
 
+#define container_of_op_field(name, type, base, field) __typeof__(type) *name = container_of(base, __typeof__(type), field)
+
+#define container_of_op(name, type, base) container_of_op_field(name, type, base, inner)
+
+#define container_of_job_op(name, type, base) container_of_op_field(name, type, base, inner.inner)
+
 #endif
