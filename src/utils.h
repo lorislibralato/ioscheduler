@@ -29,8 +29,10 @@ void no_effect_printf(const char *__restrict __fmt, ...)
 
 #define PAGE_SZ_BITS (12)
 #define PAGE_SZ (1 << PAGE_SZ_BITS)
-#define PAGE_SZ_MASK ~(PAGE_SZ - 1)
-#define PAGE_ALIGN(x) (((x) + PAGE_SZ - 1) & PAGE_SZ_MASK)
+#define PAGE_ALIGN(x) ALIGN(x, PAGE_SZ)
+
+#define ALIGN(x, a) __ALIGN_MASK(x, (typeof(x))(a) - 1)
+#define __ALIGN_MASK(x, mask) (((x) + (mask)) & ~(mask))
 
 #define max(a, b) \
   ({ __typeof__ (a) _a = (a); \

@@ -4,43 +4,52 @@
 #include "../src/utils.h"
 #define ASSERTION
 
-void insert_and_test(struct btree_node_hdr *hdr, void *key, void *data)
+void insert_and_test(struct btree_page_hdr *hdr, void *key, void *data)
 {
     int ret;
-    __u16 len = hdr->len;
-    __u16 offset = hdr->tuple_offset_limit;
-    ret = btree_node_insert(hdr, key, strlen(key), data, strlen(data));
+    __u32 size = hdr->size;
+    __u32 offset = hdr->cell_offset;
+    ret = btree_leaf_node_insert(hdr, key, strlen(key), data, strlen(data));
     assert(!ret);
 
-    assert(hdr->len == len + 1);
-    assert(hdr->tuple_offset_limit == offset - strlen(key) - strlen(data));
+    assert(hdr->size == size + 1);
+    assert(hdr->cell_offset == offset - ALIGN(sizeof(struct btree_leaf_cell) + strlen(key) + strlen(data), sizeof(__u32)));
 
-    struct btree_tuple_hdr *tuple_hdr;
+    __u32 idx;
+    ret = btree_node_bin_search(hdr, key, strlen(key), &idx);
+    ASSERT(ret);
+    // LOG("inserting in index: %d\n", idx);
 
-    tuple_hdr = btree_node_get(hdr, key, strlen(key));
-    assert(tuple_hdr);
-    assert(tuple_hdr->key_prefix == *(__u8 *)key);
+    struct btree_cell_ptr *cell_ptr;
 
-    struct btree_tuple_pointers tuple_p;
-    btree_tuple_get_pointers(hdr, tuple_hdr, &tuple_p);
-    assert(tuple_p.key_len == strlen(key));
-    assert(memcmp(tuple_p.key, key, strlen(key)) == 0);
-    assert(tuple_p.data_len == strlen(data));
-    assert(memcmp(tuple_p.data, data, strlen(data)) == 0);
+    cell_ptr = btree_node_get(hdr, key, strlen(key));
+    assert(cell_ptr);
+    assert(cell_ptr->key_prefix == *(__u32 *)key);
+
+    struct btree_cell_pointers pointers;
+    btree_cell_pointers_get(hdr, cell_ptr, &pointers);
+
+    assert(pointers.key_size == strlen(key));
+    assert(memcmp(pointers.key, key, strlen(key)) == 0);
+    assert(pointers.value_size == strlen(data));
+    assert(memcmp(pointers.value, data, strlen(data)) == 0);
+
+    // LOG("key: %s OK\n", (char *)key);
 }
 
-void check_index(struct btree_node_hdr *hdr, void *key, __u16 idx)
+void check_index(struct btree_page_hdr *hdr, void *key, __u32 idx)
 {
-    struct btree_tuple_hdr *tuple_hdr;
+    struct btree_cell_ptr *tuple_hdr;
 
     tuple_hdr = btree_node_get(hdr, key, strlen(key));
     assert(tuple_hdr);
-    assert(&(btree_tuple_get_hdrs(hdr)[idx]) == tuple_hdr);
+    assert(&(btree_cells(hdr)[idx]) == tuple_hdr);
 }
 
 int main()
 {
-    struct btree_node_hdr *hdr = btree_node_alloc();
+    struct btree_page_hdr *hdr = btree_node_alloc();
+    hdr->flags |= BTREE_PAGE_FLAGS_LEAF;
     assert(hdr);
 
     insert_and_test(hdr, "test2", "data");

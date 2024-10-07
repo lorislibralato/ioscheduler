@@ -3,67 +3,123 @@
 #include "utils.h"
 #include "btree.h"
 
-struct btree_node_hdr *btree_node_alloc(void)
+void btree_cell_pointers_get(struct btree_page_hdr *hdr, struct btree_cell_ptr *cell_ptr, struct btree_cell_pointers *pointers)
+{
+    void *cell_buf = btree_cell_get(hdr, cell_ptr);
+    if ((hdr->flags & BTREE_PAGE_FLAGS_LEAF) != 0)
+    {
+        struct btree_leaf_cell *cell = cell_buf;
+        pointers->key = cell->content;
+        pointers->key_size = cell->key_size;
+        pointers->value = cell->content + cell->key_size;
+        pointers->value_size = cell->value_size;
+    }
+    else
+    {
+        struct btree_internal_cell *cell = cell_buf;
+        pointers->key = cell->key;
+        pointers->key_size = cell->key_size;
+        pointers->value = NULL;
+        pointers->value_size = 0;
+    }
+}
+
+struct btree_cell_ptr *btree_search(struct btree *btree, void *key, __u32 key_len)
+{
+    struct btree_cell_ptr *tuple_hdr = btree_node_get(btree->root, key, key_len);
+    if (!tuple_hdr)
+        return NULL;
+
+    return NULL;
+}
+
+int btree_insert(struct btree *btree, void *key, __u32 key_len, void *data, __u32 data_len)
+{
+    return 0;
+}
+
+struct btree_page_hdr *btree_node_alloc(void)
 {
     void *node = malloc(NODE_SIZE);
     ASSERT(node);
 
-    struct btree_node_hdr *hdr = (struct btree_node_hdr *)node;
-    hdr->len = 0;
+    struct btree_page_hdr *hdr = (struct btree_page_hdr *)node;
+    hdr->size = 0;
     hdr->tombstone_offset = 0;
-    hdr->tuple_offset_limit = NODE_SIZE;
+    hdr->flags = 0;
+    hdr->last_overflow_pid = -1;
+    hdr->next_overflow_pid = -1;
+    hdr->rightmost_pid = -1;
+    hdr->tombstone_bytes = 0;
+    hdr->cell_offset = NODE_SIZE;
 
     return hdr;
 }
 
-struct btree_tuple_hdr *btree_tuple_get_hdrs(struct btree_node_hdr *hdr)
+struct btree_cell_ptr *btree_cells(struct btree_page_hdr *hdr)
 {
-    return (struct btree_tuple_hdr *)((__u8 *)hdr + sizeof(struct btree_node_hdr));
+    return (struct btree_cell_ptr *)((__u8 *)hdr + sizeof(struct btree_page_hdr));
 }
 
-struct btree_tuple_hdr *btree_tuple_get_hdr(struct btree_node_hdr *hdr, __u16 idx)
+struct btree_cell_ptr *btree_get_cell_ptr(struct btree_page_hdr *hdr, __u32 idx)
 {
-    struct btree_tuple_hdr *tuple_hdrs = btree_tuple_get_hdrs(hdr);
+    struct btree_cell_ptr *cells = btree_cells(hdr);
 
-    return &tuple_hdrs[idx];
+    return &cells[idx];
 }
 
-__u8 *btree_tuple_get(struct btree_node_hdr *hdr, struct btree_tuple_hdr *tuple_hdr)
+void *btree_cell_get(struct btree_page_hdr *hdr, struct btree_cell_ptr *cell_ptr)
 {
-    return (__u8 *)hdr + tuple_hdr->offset;
+    return (void *)hdr + cell_ptr->offset;
 }
 
-int btree_tuple_compare(struct btree_node_hdr *hdr, struct btree_tuple_hdr *tuple_hdr, void *key, __u16 key_len)
+int btree_tuple_compare(struct btree_page_hdr *hdr, struct btree_cell_ptr *cell_ptr, void *key, __u32 key_len)
 {
     int cmp;
-    __u8 *tuple;
+    void *cell_buf;
+    void *cell_key_buf;
+    __u32 cell_key_size;
 
-    cmp = *(__u8 *)key - tuple_hdr->key_prefix;
+    // TOOD: handle key_size < 4
+    cmp = *(__u32 *)key - cell_ptr->key_prefix;
     if (cmp == 0)
     {
-        tuple = btree_tuple_get(hdr, tuple_hdr);
-        cmp = memcmp((__u8 *)key, tuple, min(key_len, tuple_hdr->key_len));
+        cell_buf = btree_cell_get(hdr, cell_ptr);
+        if ((hdr->flags & BTREE_PAGE_FLAGS_LEAF) != 0)
+        {
+            struct btree_leaf_cell *cell = (struct btree_leaf_cell *)cell_buf;
+            cell_key_size = cell->key_size;
+            cell_key_buf = cell->content;
+        }
+        else
+        {
+            struct btree_internal_cell *cell = (struct btree_internal_cell *)cell_buf;
+            cell_key_size = cell->key_size;
+            cell_key_buf = cell->key;
+        }
+
+        cmp = memcmp(key, cell_key_buf, min(key_len, cell_key_size));
         if (cmp == 0)
-            cmp = key_len - tuple_hdr->key_len;
+            cmp = key_len - cell_key_size;
     }
     return cmp;
 }
 
-int btree_node_bin_search(struct btree_node_hdr *hdr, void *key, __u16 key_len, __u16 *idx)
+int btree_node_bin_search(struct btree_page_hdr *hdr, void *key, __u32 key_len, __u32 *idx)
 {
-    struct btree_tuple_hdr *tuple_hdrs = btree_tuple_get_hdrs(hdr);
-    struct btree_tuple_hdr *tuple_hdr;
+    struct btree_cell_ptr *cells = btree_cells(hdr);
+    struct btree_cell_ptr *cell;
 
     int cmp;
-    __u16 low = 0, mid = 0, high = hdr->len;
+    __u32 low = 0, mid = 0, high = hdr->size;
 
     while (low < high)
     {
         mid = (low + high) / 2;
         // LOG("low: %u | mid: %u | high: %u\n", low, mid, high);
 
-        tuple_hdr = &tuple_hdrs[mid];
-        cmp = btree_tuple_compare(hdr, tuple_hdr, key, key_len);
+        cell = &cells[mid];
+        cmp = btree_tuple_compare(hdr, cell, key, key_len);
         if (cmp == 0)
         {
             *idx = mid;
@@ -79,47 +135,54 @@ int btree_node_bin_search(struct btree_node_hdr *hdr, void *key, __u16 key_len, 
     return 0;
 }
 
-struct btree_tuple_hdr *btree_node_get(struct btree_node_hdr *hdr, void *key, __u16 key_len)
+struct btree_cell_ptr *btree_node_get(struct btree_page_hdr *hdr, void *key, __u32 key_len)
 {
-    __u16 idx;
+    __u32 idx;
     int ret = btree_node_bin_search(hdr, key, key_len, &idx);
-    ASSERT(idx < hdr->len);
-
     if (!ret)
         return NULL;
 
-    return btree_tuple_get_hdr(hdr, idx);
+    ASSERT(idx < hdr->size);
+
+    return btree_get_cell_ptr(hdr, idx);
 }
 
-void btree_tuple_get_pointers(struct btree_node_hdr *hdr, struct btree_tuple_hdr *tuple_hdr, struct btree_tuple_pointers *out)
+int btree_leaf_node_insert(struct btree_page_hdr *hdr, void *key, __u32 key_len, void *data, __u32 data_len)
 {
-    __u8 *tuple = btree_tuple_get(hdr, tuple_hdr);
+    struct btree_cell_ptr *cell_ptrs = btree_cells(hdr);
+    struct btree_cell_ptr *cell_ptr;
 
-    out->key = tuple;
-    out->data = tuple + tuple_hdr->key_len;
-    out->data_len = tuple_hdr->data_len;
-    out->key_len = tuple_hdr->key_len;
-}
+    __u32 hdr_offset_limit = sizeof(struct btree_page_hdr) + sizeof(struct btree_cell_ptr) * (hdr->size + 1);
+    __u32 offset;
+    __u32 free_space = hdr->cell_offset - hdr_offset_limit;
+    __u32 new_cell_size = ALIGN(key_len + data_len + sizeof(struct btree_leaf_cell), sizeof(__u32));
 
-int btree_node_insert(struct btree_node_hdr *hdr, void *key, __u16 key_len, void *data, __u16 data_len)
-{
-    struct btree_tuple_hdr *tuple_hdrs = btree_tuple_get_hdrs(hdr);
-    struct btree_tuple_hdr *tuple_hdr;
-
-    __u16 hdr_offset_limit = sizeof(struct btree_node_hdr) + sizeof(struct btree_tuple_hdr) * (hdr->len + 1);
-    __u16 offset;
-
-    if (hdr->tuple_offset_limit - hdr_offset_limit < data_len + key_len)
+    if (free_space < new_cell_size)
     {
         // follow tombstone list
         if (hdr->tombstone_offset != 0)
         {
-            struct btree_tuple_tombstone *tombstone = (struct btree_tuple_tombstone *)((__u8 *)hdr + hdr->tombstone_offset);
-            struct btree_tuple_hdr *tombstone_hdr = &tuple_hdrs[tombstone->tuple_hdr_index];
-            if (hdr->tuple_offset_limit - hdr_offset_limit >= tombstone_hdr->data_len + tombstone_hdr->key_len)
+            struct btree_cell_tombstone *tombstone = (struct btree_cell_tombstone *)((__u8 *)hdr + hdr->tombstone_offset);
+            if (new_cell_size <= tombstone->size)
             {
-                offset = (__u16)((__u8 *)tombstone - (__u8 *)hdr);
-                hdr->tombstone_offset = tombstone->next_tombstone_offset;
+                offset = hdr->tombstone_offset;
+                __u32 diff = tombstone->size - new_cell_size;
+                __u32 new_tombstone_offset;
+
+                // TODO: handle remaining space in tombstone
+                if (diff > sizeof(struct btree_cell_tombstone))
+                {
+                    struct btree_cell_tombstone *new_tombstone = (struct btree_cell_tombstone *)((void *)tombstone + new_cell_size);
+                    new_tombstone->size = diff - sizeof(struct btree_cell_tombstone);
+                    new_tombstone->next_tombstone_offset = tombstone->next_tombstone_offset;
+
+                    new_tombstone_offset = (__u64)hdr - (__u64)new_tombstone;
+                }
+                else
+                {
+                    new_tombstone_offset = tombstone->next_tombstone_offset;
+                }
+                hdr->tombstone_offset = new_tombstone_offset;
             }
         }
 
@@ -131,27 +194,28 @@ int btree_node_insert(struct btree_node_hdr *hdr, void *key, __u16 key_len, void
         return -1;
     }
     else
-        offset = hdr->tuple_offset_limit - key_len - data_len;
+        offset = hdr->cell_offset - new_cell_size;
 
-    __u16 idx;
+    __u32 idx;
     int ret = btree_node_bin_search(hdr, key, key_len, &idx);
     ASSERT(!ret); // TODO: handle key already exists
 
-    memmove(&tuple_hdrs[idx + 1], &tuple_hdrs[idx], (hdr->len - idx) * sizeof(struct btree_tuple_hdr));
-    tuple_hdr = &tuple_hdrs[idx];
-    tuple_hdr->flags = 0;
-    tuple_hdr->key_prefix = *(__u8 *)key;
-    tuple_hdr->key_len = key_len;
-    tuple_hdr->data_len = data_len;
-    tuple_hdr->offset = offset;
+    // TODO: implement append to the end and mark the page as unsorted keys after certain index
+    memmove(&cell_ptrs[idx + 1], &cell_ptrs[idx], (hdr->size - idx) * sizeof(struct btree_cell_ptr));
+    cell_ptr = &cell_ptrs[idx];
+    cell_ptr->offset = offset;
+    cell_ptr->key_prefix = *(__u32 *)key;
 
-    memcpy((__u8 *)hdr + offset, key, key_len);
-    memcpy((__u8 *)hdr + offset + key_len, data, data_len);
+    struct btree_leaf_cell *cell = (struct btree_leaf_cell *)((void *)hdr + offset);
+    cell->flags = 0;
+    cell->key_size = key_len;
+    cell->value_size = data_len;
+    memcpy((void *)cell->content, key, key_len);
+    memcpy((void *)cell->content + key_len, data, data_len);
 
-    hdr->tuple_offset_limit = offset;
-    hdr->len++;
-
-    LOG("insert \"%s\" in idx: %u\n", (__u8 *)key, idx);
+    hdr->cell_offset = offset;
+    hdr->size++;
+    // LOG("insert \"%s\" in idx: %u\n", (__u8 *)key, idx);
 
     return 0;
 }

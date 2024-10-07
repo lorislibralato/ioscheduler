@@ -7,53 +7,94 @@
 
 struct btree
 {
-    struct btree_node_hdr *root;
+    struct btree_page_hdr *root;
 };
 
-struct __attribute__((aligned(64))) btree_node_hdr
+enum btree_page_flag
 {
-    __u16 len;
-    __u16 tuple_offset_limit;
-    __u16 tombstone_offset;
+    BTREE_PAGE_FLAGS_LEAF = 1 << 0,
 };
 
-struct btree_tuple_tombstone
+struct btree_page_hdr
 {
-    __u16 next_tombstone_offset;
-    __u16 tuple_hdr_index;
+    __s64 next_overflow_pid;
+    __s64 last_overflow_pid;
+    __s64 rightmost_pid;
+    __u32 size;
+    __u32 cell_offset;
+    __u32 tombstone_offset;
+    __u32 tombstone_bytes;
+    __u16 flags;
 };
 
-struct btree_tuple_hdr
+struct btree_overflow_page_hdr
 {
-    __u16 key_len;
-    __u16 data_len;
-    __u16 offset;
-    __u8 key_prefix;
-    __u8 flags;
+    __s64 next_overflow_pid;
+    __u32 next_free_offset;
+    __u32 tombstone_offset;
+    __u16 flags;
 };
 
-struct btree_tuple_pointers
+struct btree_cell_tombstone
 {
-    __u8 *key;
-    __u8 *data;
-    __u16 key_len;
-    __u16 data_len;
+    __u32 next_tombstone_offset;
+    __u32 size;
 };
 
-struct btree_node_hdr *btree_node_alloc(void);
+struct btree_cell_ptr
+{
+    __u32 offset;
+    __u32 key_prefix;
+};
 
-int btree_node_bin_search(struct btree_node_hdr *hdr, void *key, __u16 key_len, __u16 *idx);
+struct __attribute__((packed)) btree_internal_cell
+{
+    __s64 pid;
+    __u32 key_size;
+    __u8 key[];
+};
 
-int btree_node_insert(struct btree_node_hdr *hdr, void *key, __u16 key_len, void *data, __u16 data_len);
+struct __attribute__((packed)) btree_leaf_cell
+{
+    __u32 data_cell_offset;
+    __u32 key_size;
+    __u32 value_size;
+    __u16 flags;
+    __u8 content[];
+};
 
-struct btree_tuple_hdr *btree_node_get(struct btree_node_hdr *hdr, void *key, __u16 key_len);
+struct btree_overflowed_cell_suffix
+{
+    __u64 overflow_pid;
+    __u32 offset;
+};
 
-void btree_tuple_get_pointers(struct btree_node_hdr *hdr, struct btree_tuple_hdr *tuple_hdr, struct btree_tuple_pointers *out);
+struct btree_cell_pointers
+{
+    void *key;
+    void *value;
+    __u32 key_size;
+    __u32 value_size;
+};
 
-struct btree_tuple_hdr *btree_tuple_get_hdrs(struct btree_node_hdr *hdr);
+void btree_cell_pointers_get(struct btree_page_hdr *hdr, struct btree_cell_ptr *cell_ptr, struct btree_cell_pointers *pointers);
 
-struct btree_tuple_hdr *btree_tuple_get_hdr(struct btree_node_hdr *hdr, __u16 idx);
+struct btree_page_hdr *btree_node_alloc(void);
 
-__u8 *btree_tuple_get(struct btree_node_hdr *hdr, struct btree_tuple_hdr *tuple_hdr);
+int btree_node_bin_search(struct btree_page_hdr *hdr, void *key, __u32 key_len, __u32 *idx);
+
+int btree_leaf_node_insert(struct btree_page_hdr *hdr, void *key, __u32 key_len, void *data, __u32 data_len);
+
+struct btree_cell_ptr *btree_node_get(struct btree_page_hdr *hdr, void *key, __u32 key_len);
+
+struct btree_cell_ptr *btree_cells(struct btree_page_hdr *hdr);
+
+struct btree_cell_ptr *btree_get_cell_ptr(struct btree_page_hdr *hdr, __u32 idx);
+
+void *btree_cell_get(struct btree_page_hdr *hdr, struct btree_cell_ptr *cell_ptr);
+
+struct btree_cell_ptr *btree_search(struct btree *btree, void *key, __u32 key_len);
+
+int btree_insert(struct btree *btree, void *key, __u32 key_len, void *data, __u32 data_len);
 
 #endif
