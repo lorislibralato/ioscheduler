@@ -4,7 +4,7 @@
 #include "../src/utils.h"
 #define ASSERTION
 
-void insert_and_test(struct btree_page_hdr *hdr, void *key, void *data)
+void insert_and_test(struct node *hdr, void *key, void *data)
 {
     int ret;
     __u32 size = hdr->size;
@@ -37,7 +37,7 @@ void insert_and_test(struct btree_page_hdr *hdr, void *key, void *data)
     // LOG("key: %s OK\n", (char *)key);
 }
 
-void check_index(struct btree_page_hdr *hdr, void *key, __u32 idx)
+void check_index(struct node *hdr, void *key, __u32 idx)
 {
     struct btree_cell_ptr *tuple_hdr;
 
@@ -48,7 +48,7 @@ void check_index(struct btree_page_hdr *hdr, void *key, __u32 idx)
 
 int main()
 {
-    struct btree_page_hdr *hdr = btree_node_alloc();
+    struct node *hdr = btree_node_alloc();
     hdr->flags |= BTREE_PAGE_FLAGS_LEAF;
     assert(hdr);
 

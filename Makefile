@@ -2,14 +2,16 @@ CC = clang
 LD = mold
 BUILD_DIR = build
 
-src_files = src/main.c src/scheduler.c src/btree.c src/cbuf.c
-src_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(src_files))
+OUT_DIRS = $(BUILD_DIR) $(BUILD_DIR)/src $(BUILD_DIR)/src/tree $(BUILD_DIR)/tests
 
-test_files = tests/test_btree_node.c tests/test_cbuf.c
-test_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(test_files))
-test_targets = $(patsubst %.c, $(BUILD_DIR)/%.t, $(test_files)) 
+src_files = main.c scheduler.c tree/btree.c tree/node.c tree/cell.c cbuf.c
+src_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(patsubst %, src/%, $(src_files)))
 
-INCLUDES = -I$(BUILD_DIR)/include/liburing/ -I$(BUILD_DIR)/include/
+test_files = test_btree_node.c test_cbuf.c
+test_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(patsubst %, tests/%, $(test_files)))
+test_targets = $(patsubst %.c, $(BUILD_DIR)/%.t, $(patsubst %, tests/%, $(test_files)))
+
+INCLUDES = -I$(BUILD_DIR)/include/liburing/ -I$(BUILD_DIR)/include/ -I src/include/
 CFLAGS = -std=c23 -O3 -Wall -Wextra -march=native -ffunction-sections -Wno-gnu-statement-expression -Wno-zero-length-array -flto $(INCLUDES) -include src/configure.h
 LDFLAGS = -flto -fuse-ld=$(LD)
 LOADLIBES = -L$(BUILD_DIR)/lib
@@ -20,16 +22,15 @@ override CFLAGS += -MT "$@" -MMD -MP -MF "$@.d"
 
 liburing = $(BUILD_DIR)/lib/liburing.a
 bin_scheduler = $(BUILD_DIR)/ioscheduler
-bin_legacy = $(BUILD_DIR)/legacy
 configure_output = liburing/config-host.mak
 configure_file = liburing/configure
 
-all: build_scheduler build_legacy tests
+all: build_scheduler tests directories
 
-dir:
-	@mkdir -p $(BUILD_DIR)
-	@mkdir -p $(BUILD_DIR)/src
-	@mkdir -p $(BUILD_DIR)/tests
+directories: $(OUT_DIRS)
+
+${OUT_DIRS}:
+	@mkdir -p $(OUT_DIRS)
 
 $(configure_output): $(configure_file)
 	+@cd liburing && \
@@ -54,20 +55,13 @@ $(bin_scheduler): $(liburing) $(src_obj_files)
 	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
 	@echo $@
 
--include $(BUILD_DIR)/src/main_legacy.o.d
-$(bin_legacy): $(BUILD_DIR)/src/main_legacy.o
-	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
-	@echo $@
-
 $(BUILD_DIR)/%.t: %.c $(src_obj_files)
 	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
 	@echo $@
 
-build_scheduler: dir $(bin_scheduler)
+build_scheduler: directories $(bin_scheduler)
 
-build_legacy: dir $(bin_legacy)
-
-tests: dir $(test_targets)
+tests: directories $(test_targets)
 
 run_tests: tests
 	@$(BUILD_DIR)/tests/test_cbuf.t
