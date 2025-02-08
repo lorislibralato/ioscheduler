@@ -52,8 +52,7 @@ int main()
 {
     struct node *hdr = btree_node_alloc();
     ASSERT(hdr);
-    node_init(hdr);
-    hdr->flags |= BTREE_PAGE_FLAGS_LEAF;
+    node_init(hdr, BTREE_PAGE_FLAGS_LEAF);
 
     insert_and_test(hdr, "test2", "data");
     insert_and_test(hdr, "test3", "data");

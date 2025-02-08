@@ -48,7 +48,7 @@ struct cell_pointers
 
 void node_cell_pointers(struct node *node, struct cell_ptr *cell_ptr, struct cell_pointers *pointers);
 
-void node_init(struct node *node);
+void node_init(struct node *node, __u32 flags);
 
 int node_bin_search(struct node *node, void *key, __u32 key_size, __u32 *idx);
 
@@ -74,7 +74,7 @@ __u32 offset_from_cell(struct node *node, void *cell);
 
 __u32 node_get_free_offset(struct node *node, __u32 key_size, __u32 value_size);
 
-int node_is_leaf(struct node *node);
+int is_node_leaf(struct node *node);
 
 struct node *btree_split_node(struct node *node);
 
@@ -82,10 +82,10 @@ void node_tuple_set_tombstone(struct node *node, __u32 idx);
 
 void node_insert_leaf_cell(struct node *node, __u32 offset, __u32 idx, void *key, __u32 key_size, void *value, __u32 value_size);
 
-void node_insert_internal_cell(struct node *node, struct node *child, __u32 offset, __u32 idx, void *key, __u32 key_size);
+void node_insert_internal_cell(struct node *node, __u32 offset, __u32 idx, void *key, __u32 key_size, struct node *child);
 
 void node_write_leaf_cell(struct node *node, struct cell_ptr *cell_ptr, void *key, __u32 key_size, void *value, __u32 value_size, __u16 flags);
 
-void node_write_internal_cell(struct node *node, struct node *child, struct cell_ptr *cell_ptr, void *key, __u32 key_size, __u16 flags);
+void node_write_internal_cell(struct node *node, struct cell_ptr *cell_ptr, void *key, __u32 key_size, struct node *child, __u16 flags);
 
 #endif

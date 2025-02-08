@@ -6,7 +6,7 @@
 #include "tree/cell.h"
 #include "tree/btree.h"
 
-void node_init(struct node *node)
+void node_init(struct node *node, __u32 flags)
 {
     node->size = 0;
     node->tombstone_offset = 0;
@@ -16,6 +16,7 @@ void node_init(struct node *node)
     node->rightmost_pid = -1;
     node->tombstone_bytes = 0;
     node->cell_offset = NODE_SIZE;
+    node->flags = flags;
 }
 
 void node_cell_pointers(struct node *node, struct cell_ptr *cell_ptr, struct cell_pointers *pointers)
@@ -166,7 +167,7 @@ __u32 node_get_free_offset(struct node *node, __u32 key_size, __u32 value_size)
     return offset;
 }
 
-int node_is_leaf(struct node *node)
+int is_node_leaf(struct node *node)
 {
     return node->flags & BTREE_PAGE_FLAGS_LEAF;
 }
@@ -183,7 +184,7 @@ int node_insert(struct node *leaf, void *key, __u32 key_size, void *value, __u32
     {
         cell_ptrs = node_cells(leaf);
         ret = node_bin_search(leaf, key, key_size, &idx);
-        if (node_is_leaf(leaf))
+        if (is_node_leaf(leaf))
             break;
 
         cell_ptr = &cell_ptrs[idx];
@@ -255,7 +256,7 @@ int node_insert(struct node *leaf, void *key, __u32 key_size, void *value, __u32
             offset = node_get_free_offset(target_node, promoted_key_size, 0);
             ASSERT(offset > 0);
 
-            node_insert_internal_cell(target_node, child_node, offset, idx, promoted_key, promoted_key_size);
+            node_insert_internal_cell(target_node, offset, idx, promoted_key, promoted_key_size, child_node);
 
             if (!split_node)
                 break;
@@ -303,7 +304,7 @@ struct node *internal_node_split(struct node *node, __u32 partition_idx)
     ASSERT(new_node);
 
     // TODO: init node leaf or internal
-    node_init(new_node);
+    node_init(new_node, 0);
 
     struct cell_ptr *cell_ptrs = node_cells(node);
     struct cell_ptr *new_cell_ptrs = node_cells(new_node);
@@ -319,7 +320,7 @@ struct node *internal_node_split(struct node *node, __u32 partition_idx)
         new_node->cell_offset -= sizeof(*cell) + cell->key_size;
         new_cell_ptrs[j].offset = new_node->cell_offset;
 
-        node_write_internal_cell(new_node, internal_cell_node(cell), &new_cell_ptrs[j], cell_get_key(cell), cell->key_size, 0);
+        node_write_internal_cell(new_node, &new_cell_ptrs[j], cell_get_key(cell), cell->key_size, internal_cell_node(cell), 0);
         node_tuple_set_tombstone(node, partition_idx);
     }
 
@@ -332,7 +333,7 @@ struct node *leaf_node_split(struct node *node, __u32 partition_idx)
     ASSERT(new_node);
 
     // TODO: init node leaf or internal
-    node_init(new_node);
+    node_init(new_node, BTREE_PAGE_FLAGS_LEAF);
     new_node->parent_pid = (__u64)node;
 
     struct cell_ptr *cell_ptrs = node_cells(node);
@@ -387,7 +388,7 @@ void node_insert_leaf_cell(struct node *hdr, __u32 offset, __u32 idx, void *key,
     hdr->size++;
 }
 
-void node_insert_internal_cell(struct node *node, struct node *child, __u32 offset, __u32 idx, void *key, __u32 key_size)
+void node_insert_internal_cell(struct node *node, __u32 offset, __u32 idx, void *key, __u32 key_size, struct node *child)
 {
     struct cell_ptr *cell_ptrs = node_cells(node);
     struct cell_ptr *cell_ptr = &cell_ptrs[idx];
@@ -396,7 +397,7 @@ void node_insert_internal_cell(struct node *node, struct node *child, __u32 offs
     memmove(&cell_ptrs[idx + 1], &cell_ptrs[idx], (node->size - idx) * sizeof(struct cell_ptr));
     cell_ptr->offset = offset;
 
-    node_write_internal_cell(node, child, &cell_ptrs[idx], key, key_size, 0);
+    node_write_internal_cell(node, &cell_ptrs[idx], key, key_size, child, 0);
 
     node->cell_offset = offset;
     node->size++;
@@ -413,7 +414,7 @@ void node_write_leaf_cell(struct node *node, struct cell_ptr *cell_ptr, void *ke
     memcpy(leaf_cell_get_value(cell), value, value_size);
 }
 
-void node_write_internal_cell(struct node *node, struct node *child, struct cell_ptr *cell_ptr, void *key, __u32 key_size, __u16 flags)
+void node_write_internal_cell(struct node *node, struct cell_ptr *cell_ptr, void *key, __u32 key_size, struct node *child, __u16 flags)
 {
     (void)flags;
 
