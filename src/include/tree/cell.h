@@ -35,4 +35,10 @@ struct __attribute__((packed)) cell
     __u8 content[];
 };
 
+void *leaf_cell_get_value(struct cell *cell);
+
+void *cell_get_key(struct cell *cell);
+
+struct node* internal_cell_node(struct cell *cell);
+
 #endif

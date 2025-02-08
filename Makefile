@@ -55,7 +55,7 @@ $(bin_scheduler): $(liburing) $(src_obj_files)
 	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
 	@echo $@
 
-$(BUILD_DIR)/%.t: %.c $(src_obj_files)
+$(BUILD_DIR)/%.t: %.c $(liburing) $(src_obj_files)
 	@$(CC) $(CFLAGS) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) -o $@ $^
 	@echo $@
 

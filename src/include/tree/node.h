@@ -46,7 +46,7 @@ struct btree_cell_pointers
     __u32 value_size;
 };
 
-// void btree_cell_pointers_get(struct node *node, struct cell_ptr *cell_ptr, struct btree_cell_pointers *pointers);
+void cell_pointers_get(struct node *node, struct cell_ptr *cell_ptr, struct btree_cell_pointers *pointers);
 
 void node_init(struct node *node);
 

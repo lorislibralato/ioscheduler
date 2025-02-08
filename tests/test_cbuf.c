@@ -1,8 +1,8 @@
-#include <stdio.h>
-#include <string.h>
-#include "../src/cbuf.h"
-#include "../src/utils.h"
 #define ASSERTION
+#define DEBUG
+#include "../src/include/utils.h"
+#include "../src/include/cbuf.h"
+#include <string.h>
 
 int main()
 {
@@ -56,5 +56,5 @@ int main()
     ASSERT(!cbuf_is_empty(&cbuf));
     ASSERT(cbuf_free_count(&cbuf) == 0);
 
-    printf("TEST (%s): ok\n", __FILE__);
+    LOG("TEST (%s): ok\n", __FILE__);
 }

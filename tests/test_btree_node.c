@@ -1,56 +1,59 @@
-#include <stdio.h>
-#include <string.h>
-#include "../src/btree.h"
-#include "../src/utils.h"
 #define ASSERTION
+#define DEBUG
+#include <string.h>
+#include "../src/include/utils.h"
+#include "../src/include/tree/btree.h"
+#include "../src/include/tree/node.h"
+#include "../src/include/tree/cell.h"
 
 void insert_and_test(struct node *hdr, void *key, void *data)
 {
     int ret;
     __u32 size = hdr->size;
     __u32 offset = hdr->cell_offset;
-    ret = btree_leaf_node_insert(hdr, key, strlen(key), data, strlen(data));
-    assert(!ret);
+    ret = node_insert(hdr, key, strlen(key), data, strlen(data));
+    ASSERT(!ret);
 
-    assert(hdr->size == size + 1);
-    assert(hdr->cell_offset == offset - ALIGN(sizeof(struct btree_leaf_cell) + strlen(key) + strlen(data), sizeof(__u32)));
+    ASSERT(hdr->size == size + 1);
+    ASSERT(hdr->cell_offset == offset - ALIGN(sizeof(struct cell) + strlen(key) + strlen(data), sizeof(__u32)));
 
     __u32 idx;
-    ret = btree_node_bin_search(hdr, key, strlen(key), &idx);
+    ret = node_bin_search(hdr, key, strlen(key), &idx);
     ASSERT(ret);
     // LOG("inserting in index: %d\n", idx);
 
-    struct btree_cell_ptr *cell_ptr;
+    struct cell_ptr *cell_ptr;
 
     cell_ptr = btree_node_get(hdr, key, strlen(key));
-    assert(cell_ptr);
-    assert(cell_ptr->key_prefix == *(__u32 *)key);
+    ASSERT(cell_ptr);
+    // ASSERT(cell_ptr->key_prefix == *(__u32 *)key);
 
     struct btree_cell_pointers pointers;
-    btree_cell_pointers_get(hdr, cell_ptr, &pointers);
+    cell_pointers_get(hdr, cell_ptr, &pointers);
 
-    assert(pointers.key_size == strlen(key));
-    assert(memcmp(pointers.key, key, strlen(key)) == 0);
-    assert(pointers.value_size == strlen(data));
-    assert(memcmp(pointers.value, data, strlen(data)) == 0);
+    ASSERT(pointers.key_size == strlen(key));
+    ASSERT(memcmp(pointers.key, key, strlen(key)) == 0);
+    ASSERT(pointers.value_size == strlen(data));
+    ASSERT(memcmp(pointers.value, data, strlen(data)) == 0);
 
     // LOG("key: %s OK\n", (char *)key);
 }
 
 void check_index(struct node *hdr, void *key, __u32 idx)
 {
-    struct btree_cell_ptr *tuple_hdr;
+    struct cell_ptr *tuple_hdr;
 
     tuple_hdr = btree_node_get(hdr, key, strlen(key));
-    assert(tuple_hdr);
-    assert(&(btree_cells(hdr)[idx]) == tuple_hdr);
+    ASSERT(tuple_hdr);
+    ASSERT(&(node_cells(hdr)[idx]) == tuple_hdr);
 }
 
 int main()
 {
     struct node *hdr = btree_node_alloc();
+    ASSERT(hdr);
+    node_init(hdr);
     hdr->flags |= BTREE_PAGE_FLAGS_LEAF;
-    assert(hdr);
 
     insert_and_test(hdr, "test2", "data");
     insert_and_test(hdr, "test3", "data");
@@ -62,5 +65,5 @@ int main()
     check_index(hdr, "test2", 2);
     check_index(hdr, "test3", 3);
 
-    printf("TEST (%s): ok\n", __FILE__);
+    LOG("TEST (%s): ok\n", __FILE__);
 }

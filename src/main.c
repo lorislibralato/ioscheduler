@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "configure.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,7 +10,6 @@
 #include <time.h>
 #include "utils.h"
 #include "scheduler.h"
-#include "configure.h"
 
 unsigned int page_id_check_order = 0;
 

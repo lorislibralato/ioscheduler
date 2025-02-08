@@ -18,26 +18,25 @@ void node_init(struct node *node)
     node->cell_offset = NODE_SIZE;
 }
 
-// void btree_cell_pointers_get(struct node *node, struct cell_ptr *cell_ptr, struct btree_cell_pointers *pointers)
-// {
-//     void *cell_buf = node_cell_from_ptr(node, cell_ptr);
-//     if (node->flags & BTREE_PAGE_FLAGS_LEAF)
-//     {
-//         struct leaf_cell *cell = cell_buf;
-//         pointers->key = cell->content;
-//         pointers->key_size = cell->key_size;
-//         pointers->value = cell->content + cell->key_size;
-//         pointers->value_size = cell->value_size;
-//     }
-//     else
-//     {
-//         struct internal_cell *cell = cell_buf;
-//         pointers->key = cell->key;
-//         pointers->key_size = cell->key_size;
-//         pointers->value = NULL;
-//         pointers->value_size = 0;
-//     }
-// }
+void cell_pointers_get(struct node *node, struct cell_ptr *cell_ptr, struct btree_cell_pointers *pointers)
+{
+    void *cell_buf = node_cell_from_ptr(node, cell_ptr);
+    struct cell *cell = cell_buf;
+    if (node->flags & BTREE_PAGE_FLAGS_LEAF)
+    {
+        pointers->key = cell_get_key(cell);
+        pointers->key_size = cell->key_size;
+        pointers->value = leaf_cell_get_value(cell);
+        pointers->value_size = cell->value_size;
+    }
+    else
+    {
+        pointers->key = cell_get_key(cell);
+        pointers->key_size = cell->key_size;
+        pointers->value = NULL;
+        pointers->value_size = 0;
+    }
+}
 
 struct cell_ptr *node_cells(struct node *node)
 {
@@ -65,7 +64,7 @@ int key_compare(struct node *node, struct cell_ptr *cell_p, void *key, __u32 key
 {
     struct cell *cell = node_cell_from_ptr(node, cell_p);
 
-    int cmp = memcmp(key, cell->content, min(key_size, cell->key_size));
+    int cmp = memcmp(key, cell_get_key(cell), min(key_size, cell->key_size));
     if (cmp == 0)
         cmp = key_size - cell->key_size;
 
@@ -185,16 +184,16 @@ int node_insert(struct node *leaf, void *key, __u32 key_size, void *value, __u32
         cell_ptrs = node_cells(leaf);
         ret = node_bin_search(leaf, key, key_size, &idx);
         if (node_is_leaf(leaf))
-        break;
-        
+            break;
+
         cell_ptr = &cell_ptrs[idx];
         internal_cell = node_cell_from_ptr(leaf, cell_ptr);
         // TODO: resolve pid to page in memory
-        leaf = (struct node *)internal_cell->pid;
+        leaf = internal_cell_node(internal_cell);
     }
 
     // key already exists in leaf node
-    if (!ret)
+    if (ret)
         return -1;
 
     __u32 offset = node_get_free_offset(leaf, key_size, value_size);
@@ -225,7 +224,7 @@ int node_insert(struct node *leaf, void *key, __u32 key_size, void *value, __u32
         struct node *internal_node = (struct node *)leaf->parent_pid;
         struct node *new_internal_node;
         struct node *child_node = new_node;
-        void *promoted_key = new_node_first_cell->content;
+        void *promoted_key = cell_get_key(new_node_first_cell);
         __u32 promoted_key_size = new_node_first_cell->key_size;
         int split_node;
 
@@ -264,7 +263,7 @@ int node_insert(struct node *leaf, void *key, __u32 key_size, void *value, __u32
             // new partition key that wasn't included in the new internal node but need to be promoted to the upper node
             struct cell_ptr *internal_partition_cell_ptr = &node_cells(internal_node)[partition_idx];
             struct cell *internal_partition_cell = node_cell_from_ptr(internal_node, internal_partition_cell_ptr);
-            promoted_key = internal_partition_cell->content;
+            promoted_key = cell_get_key(internal_partition_cell);
             promoted_key_size = internal_partition_cell->key_size;
 
             child_node = new_internal_node;
@@ -320,7 +319,7 @@ struct node *internal_node_split(struct node *node, __u32 partition_idx)
         new_node->cell_offset -= sizeof(*cell) + cell->key_size;
         new_cell_ptrs[j].offset = new_node->cell_offset;
 
-        btree_write_internal_cell(new_node, (struct node *)cell->pid, &new_cell_ptrs[j], cell->content, cell->key_size, 0);
+        btree_write_internal_cell(new_node, internal_cell_node(cell), &new_cell_ptrs[j], cell_get_key(cell), cell->key_size, 0);
         btree_tuple_set_tombstone(node, partition_idx);
     }
 
@@ -349,7 +348,7 @@ struct node *leaf_node_split(struct node *node, __u32 partition_idx)
         new_node->cell_offset -= sizeof(*cell) + cell->key_size + cell->value_size;
         new_cell_ptrs[j].offset = new_node->cell_offset;
 
-        btree_write_leaf_cell(new_node, &new_cell_ptrs[j], cell->content, cell->key_size, cell->content + cell->key_size, cell->value_size, 0);
+        btree_write_leaf_cell(new_node, &new_cell_ptrs[j], cell_get_key(cell), cell->key_size, leaf_cell_get_value(cell), cell->value_size, 0);
         btree_tuple_set_tombstone(node, partition_idx);
     }
 
@@ -410,8 +409,8 @@ void btree_write_leaf_cell(struct node *node, struct cell_ptr *cell_ptr, void *k
     cell->key_size = key_size;
     cell->value_size = value_size;
     cell->total_size = key_size + value_size;
-    memcpy(cell->content, key, key_size);
-    memcpy(cell->content + key_size, value, value_size);
+    memcpy(cell_get_key(cell), key, key_size);
+    memcpy(leaf_cell_get_value(cell), value, value_size);
 }
 
 void btree_write_internal_cell(struct node *node, struct node *child, struct cell_ptr *cell_ptr, void *key, __u32 key_size, __u16 flags)
@@ -422,5 +421,5 @@ void btree_write_internal_cell(struct node *node, struct node *child, struct cel
     cell->key_size = key_size;
     cell->total_size = key_size;
     cell->pid = (__u64)child;
-    memcpy(cell->content, key, key_size);
+    memcpy(cell_get_key(cell), key, key_size);
 }
