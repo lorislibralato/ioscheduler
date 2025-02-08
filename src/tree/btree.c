@@ -6,7 +6,7 @@
 
 struct cell_ptr *btree_search(struct btree *btree, void *key, __u32 key_size)
 {
-    struct cell_ptr *tuple_hdr = btree_node_get(btree->root, key, key_size);
+    struct cell_ptr *tuple_hdr = node_get_cell(btree->root, key, key_size);
     if (!tuple_hdr)
         return NULL;
 

@@ -24,12 +24,12 @@ void insert_and_test(struct node *hdr, void *key, void *data)
 
     struct cell_ptr *cell_ptr;
 
-    cell_ptr = btree_node_get(hdr, key, strlen(key));
+    cell_ptr = node_get_cell(hdr, key, strlen(key));
     ASSERT(cell_ptr);
     // ASSERT(cell_ptr->key_prefix == *(__u32 *)key);
 
-    struct btree_cell_pointers pointers;
-    cell_pointers_get(hdr, cell_ptr, &pointers);
+    struct cell_pointers pointers;
+    node_cell_pointers(hdr, cell_ptr, &pointers);
 
     ASSERT(pointers.key_size == strlen(key));
     ASSERT(memcmp(pointers.key, key, strlen(key)) == 0);
@@ -43,7 +43,7 @@ void check_index(struct node *hdr, void *key, __u32 idx)
 {
     struct cell_ptr *tuple_hdr;
 
-    tuple_hdr = btree_node_get(hdr, key, strlen(key));
+    tuple_hdr = node_get_cell(hdr, key, strlen(key));
     ASSERT(tuple_hdr);
     ASSERT(&(node_cells(hdr)[idx]) == tuple_hdr);
 }
