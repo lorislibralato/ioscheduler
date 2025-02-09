@@ -7,7 +7,7 @@ OUT_DIRS = $(BUILD_DIR) $(BUILD_DIR)/src $(BUILD_DIR)/src/tree $(BUILD_DIR)/test
 src_files = main.c scheduler.c tree/btree.c tree/node.c tree/cell.c cbuf.c
 src_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(patsubst %, src/%, $(src_files)))
 
-test_files = test_btree_node.c test_cbuf.c
+test_files = test_btree.c test_btree_node.c test_cbuf.c
 test_obj_files = $(patsubst %.c, $(BUILD_DIR)/%.o, $(patsubst %, tests/%, $(test_files)))
 test_targets = $(patsubst %.c, $(BUILD_DIR)/%.t, $(patsubst %, tests/%, $(test_files)))
 
@@ -66,6 +66,7 @@ tests: directories $(test_targets)
 run_tests: tests
 	@$(BUILD_DIR)/tests/test_cbuf.t
 	@$(BUILD_DIR)/tests/test_btree_node.t
+	@$(BUILD_DIR)/tests/test_btree.t
 
 perf: build_scheduler
 	@rm -rf __test_perf.db

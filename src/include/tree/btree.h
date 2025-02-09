@@ -8,6 +8,7 @@ struct btree
     struct node *root;
 };
 
+int btree_init(struct btree *btree);
 
 struct cell_ptr *btree_search(struct btree *btree, void *key, __u32 key_size);
 

@@ -54,4 +54,6 @@ void no_effect_printf(const char *__restrict __fmt, ...)
 
 #define container_of_job_op(name, type, base) container_of_op_field(name, type, base, inner.inner)
 
+#define ARRAY_LEN(arr) (sizeof(arr) / sizeof(arr[0]))
+
 #endif

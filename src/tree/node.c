@@ -23,7 +23,7 @@ void node_cell_pointers(struct node *node, struct cell_ptr *cell_ptr, struct cel
 {
     void *cell_buf = node_cell_from_ptr(node, cell_ptr);
     struct cell *cell = cell_buf;
-    if (node->flags & BTREE_PAGE_FLAGS_LEAF)
+    if (node->flags & BTREE_NODE_FLAGS_LEAF)
     {
         pointers->key = cell_get_key(cell);
         pointers->key_size = cell->key_size;
@@ -125,13 +125,14 @@ __u32 node_get_free_offset(struct node *node, __u32 key_size, __u32 value_size)
     __u32 offset;
     __u32 free_space = node->cell_offset - hdr_offset_limit;
     __u32 new_cell_size = ALIGN(key_size + value_size + sizeof(struct cell), sizeof(__u32));
+    struct cell *tombstone, *new_tombstone;
 
     if (free_space < new_cell_size)
     {
         // follow tombstone list
         if (node->tombstone_offset != 0)
         {
-            struct cell *tombstone = node_cell_from_offset(node, node->tombstone_offset);
+            tombstone = node_cell_from_offset(node, node->tombstone_offset);
             if (new_cell_size <= tombstone->tombstone_size)
             {
                 offset = node->tombstone_offset;
@@ -141,7 +142,7 @@ __u32 node_get_free_offset(struct node *node, __u32 key_size, __u32 value_size)
                 // TODO: handle remaining space in tombstone
                 if (diff > sizeof(struct cell))
                 {
-                    struct cell *new_tombstone = (struct cell *)((void *)tombstone + new_cell_size);
+                    new_tombstone = (struct cell *)((void *)tombstone + new_cell_size);
                     new_tombstone->tombstone_size = diff - sizeof(struct cell);
                     new_tombstone->next_off = tombstone->next_off;
 
@@ -169,7 +170,7 @@ __u32 node_get_free_offset(struct node *node, __u32 key_size, __u32 value_size)
 
 int is_node_leaf(struct node *node)
 {
-    return node->flags & BTREE_PAGE_FLAGS_LEAF;
+    return node->flags & BTREE_NODE_FLAGS_LEAF;
 }
 
 int node_insert(struct node *leaf, void *key, __u32 key_size, void *value, __u32 value_size)
@@ -228,9 +229,14 @@ int node_insert(struct node *leaf, void *key, __u32 key_size, void *value, __u32
         void *promoted_key = cell_get_key(new_node_first_cell);
         __u32 promoted_key_size = new_node_first_cell->key_size;
         int split_node;
+        struct cell_ptr *internal_node_cell_ptrs;
+        struct cell_ptr *internal_partition_cell_ptr;
+        struct cell *internal_partition_cell;
 
         while (1)
         {
+            internal_node_cell_ptrs = node_cells(internal_node);
+
             // parent node doesn't have space, split internal node recusivly
             offset = node_get_free_offset(internal_node, promoted_key_size, 0);
             split_node = !offset;
@@ -238,8 +244,6 @@ int node_insert(struct node *leaf, void *key, __u32 key_size, void *value, __u32
             {
                 partition_idx = node_partition_idx(internal_node);
                 new_internal_node = internal_node_split(internal_node, partition_idx + 1);
-
-                struct cell_ptr *internal_node_cell_ptrs = node_cells(internal_node);
 
                 if (key_compare(internal_node, &internal_node_cell_ptrs[partition_idx], promoted_key, promoted_key_size) >= 0)
                     target_node = new_internal_node;
@@ -262,8 +266,8 @@ int node_insert(struct node *leaf, void *key, __u32 key_size, void *value, __u32
                 break;
 
             // new partition key that wasn't included in the new internal node but need to be promoted to the upper node
-            struct cell_ptr *internal_partition_cell_ptr = &node_cells(internal_node)[partition_idx];
-            struct cell *internal_partition_cell = node_cell_from_ptr(internal_node, internal_partition_cell_ptr);
+            internal_partition_cell_ptr = &internal_node_cell_ptrs[partition_idx];
+            internal_partition_cell = node_cell_from_ptr(internal_node, internal_partition_cell_ptr);
             promoted_key = cell_get_key(internal_partition_cell);
             promoted_key_size = internal_partition_cell->key_size;
 
@@ -333,7 +337,7 @@ struct node *leaf_node_split(struct node *node, __u32 partition_idx)
     ASSERT(new_node);
 
     // TODO: init node leaf or internal
-    node_init(new_node, BTREE_PAGE_FLAGS_LEAF);
+    node_init(new_node, BTREE_NODE_FLAGS_LEAF);
     new_node->parent_pid = (__u64)node;
 
     struct cell_ptr *cell_ptrs = node_cells(node);

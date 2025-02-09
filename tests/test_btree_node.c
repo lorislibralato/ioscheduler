@@ -52,17 +52,23 @@ int main()
 {
     struct node *hdr = btree_node_alloc();
     ASSERT(hdr);
-    node_init(hdr, BTREE_PAGE_FLAGS_LEAF);
+    node_init(hdr, BTREE_NODE_FLAGS_LEAF);
 
     insert_and_test(hdr, "test2", "data");
     insert_and_test(hdr, "test3", "data");
     insert_and_test(hdr, "test1", "data");
     insert_and_test(hdr, "test0", "data");
+    insert_and_test(hdr, "test9", "data");
+    insert_and_test(hdr, "test8", "data");
+    insert_and_test(hdr, "test7", "data");
 
     check_index(hdr, "test0", 0);
     check_index(hdr, "test1", 1);
     check_index(hdr, "test2", 2);
     check_index(hdr, "test3", 3);
+    check_index(hdr, "test7", 4);
+    check_index(hdr, "test8", 5);
+    check_index(hdr, "test9", 6);
 
     LOG("TEST (%s): ok\n", __FILE__);
 }

@@ -8,7 +8,8 @@
 
 enum node_flag
 {
-    BTREE_PAGE_FLAGS_LEAF = 1 << 0,
+    BTREE_NODE_FLAGS_LEAF = 1 << 0,
+    BTREE_NODE_FLAGS_ROOT = 1 << 1,
 };
 
 struct node
