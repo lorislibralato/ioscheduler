@@ -21,7 +21,7 @@ struct __attribute__((packed)) cell
         struct
         {
             // internal
-            __s64 pid;
+            __u64 pid;
         };
         struct
         {
@@ -35,10 +35,12 @@ struct __attribute__((packed)) cell
     __u8 content[];
 };
 
-void *leaf_cell_get_value(struct cell *cell);
+void debug_cell(struct cell *cell);
 
-void *cell_get_key(struct cell *cell);
+__u8 *leaf_cell_get_value(struct cell *cell);
 
-struct node* internal_cell_node(struct cell *cell);
+__u8 *cell_get_key(struct cell *cell);
+
+struct node* internal_cell_child(struct cell *cell);
 
 #endif

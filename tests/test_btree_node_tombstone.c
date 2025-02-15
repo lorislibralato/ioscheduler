@@ -48,16 +48,17 @@ void check_index(struct node *node, void *key, __u32 idx)
     ASSERT(&(node_cells(node)[idx]) == cell);
 }
 
-void test_key_compare()
+void delete_key(struct node *node, void *key)
 {
-    int ret;
-    char *key1 = "test2";
-    char *key2 = "test3";
+    struct cell_ptr *cell;
 
-    ret = __key_compare((__u8 *)key1, strlen(key1), (__u8 *)key2, strlen(key2));
-    ASSERT(ret < 0);
+    int err;
+    err = node_delete_key(node, key, strlen(key));
+    ASSERT(!err);
+    
 
-    LOG("TEST (%s:%s): ok\n", __FILE__, __FUNCTION__);
+    cell = node_get_cell(node, key, strlen(key));
+    ASSERT(cell == NULL);
 }
 
 void test_insert_position()
@@ -74,8 +75,6 @@ void test_insert_position()
     insert_and_test(node, "test8", "data");
     insert_and_test(node, "test7", "data");
 
-    // debug_node(node);
-
     check_index(node, "test0", 0);
     check_index(node, "test1", 1);
     check_index(node, "test2", 2);
@@ -84,11 +83,20 @@ void test_insert_position()
     check_index(node, "test8", 5);
     check_index(node, "test9", 6);
 
+    delete_key(node, "test0");
+    delete_key(node, "test1");
+
+    check_index(node, "test2", 0);
+    check_index(node, "test3", 1);
+    check_index(node, "test7", 2);
+    check_index(node, "test8", 3);
+    check_index(node, "test9", 4);
+
+
     LOG("TEST (%s:%s): ok\n", __FILE__, __FUNCTION__);
 }
 
 int main()
 {
-    test_key_compare();
     test_insert_position();
 }
