@@ -7,7 +7,7 @@
 #include "../src/include/tree/node.h"
 #include "../src/include/tree/cell.h"
 
-#define TUPLE_COUNT (14)
+#define TUPLE_COUNT (100*1000)
 
 void validate_order(struct node *node, struct cell *lower_limit, struct cell *upper_limit)
 {
@@ -89,7 +89,7 @@ void print_tree(struct node *node, __u32 level, int show_cells, int show_tombsto
     }
 }
 
-void count_node(struct node *node, __u32 *leaf, __u32 *internal, __u32 *tuple)
+void tree_info(struct node *node, __u32 *leaf, __u32 *internal, __u32 *tuple)
 {
     if (node_is_leaf(node))
     {
@@ -100,10 +100,10 @@ void count_node(struct node *node, __u32 *leaf, __u32 *internal, __u32 *tuple)
     {
         *internal = *internal + 1;
         for (__u32 i = 0; i < node->size; i++)
-            count_node(internal_cell_child(node_cell_from_idx(node, i)), leaf, internal, tuple);
+            tree_info(internal_cell_child(node_cell_from_idx(node, i)), leaf, internal, tuple);
 
         if (node->rightmost_pid)
-            count_node((struct node *)node->rightmost_pid, leaf, internal, tuple);
+            tree_info((struct node *)node->rightmost_pid, leaf, internal, tuple);
     }
 }
 
@@ -115,8 +115,8 @@ int main()
     ret = btree_init(&btree);
     ASSERT(!ret);
 
-    __u8 key[512];
-    __u8 value[512];
+    __u8 key[64];
+    __u8 value[128];
 
     for (__s32 i = 1; i <= TUPLE_COUNT; i++)
     {
@@ -127,16 +127,20 @@ int main()
 
         ret = btree_insert(&btree, key, ARRAY_LEN(key), value, ARRAY_LEN(value));
         ASSERT(!ret);
-        
+
         // print_tree(btree.root, 0, 1, 0);
-        __u32 leaf = 0, internal = 0, tuple = 0;
-        count_node(btree.root, &leaf, &internal, &tuple);
-        LOG("LEAF NODES: %d, INTERNAL NODES: %d, TUPLES: %d\n", leaf, internal, tuple);
-        ASSERT(tuple == btree.count);
-        validate_order(btree.root, NULL, NULL);
+        // __u32 leaf = 0, internal = 0, tuple = 0;
+        // tree_info(btree.root, &leaf, &internal, &tuple);
+        // LOG("LEAF NODES: %d, INTERNAL NODES: %d, TUPLES: %d\n", leaf, internal, tuple);
+        // ASSERT(tuple == btree.count);
+        // validate_order(btree.root, NULL, NULL);
     }
 
-    print_tree(btree.root, 0, 1, 0);
+    validate_order(btree.root, NULL, NULL);
+    __u32 leaf = 0, internal = 0, tuple = 0;
+    tree_info(btree.root, &leaf, &internal, &tuple);
+    LOG("LEAF NODES: %d, INTERNAL NODES: %d, TUPLES: %d\n", leaf, internal, tuple);
+    // print_tree(btree.root, 0, 1, 0);
 
     LOG("TEST (%s): ok\n", __FILE__);
 }

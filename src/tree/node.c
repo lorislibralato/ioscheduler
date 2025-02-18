@@ -346,8 +346,9 @@ __u32 node_partition_idx(struct node *node)
 
 void internal_node_split(struct node *node, struct node *new_node, __u32 partition_idx)
 {
-    ASSERT(node->size >= 0);
+    ASSERT(node->size > 0);
     ASSERT(new_node->size == 0);
+    __u32 before_count = node->size;
     struct cell_ptr *cell_ptrs = node_cells(node);
     struct cell_ptr *new_cell_ptrs = node_cells(new_node);
     struct cell *cell;
@@ -355,7 +356,7 @@ void internal_node_split(struct node *node, struct node *new_node, __u32 partiti
     // write first half to new node, stop when node is half empty
     // TODO: write last half to the new node, and keep the first half in the current node, if needed clean the node
 
-    LOG("partition_idx: %d, len: %d\n", partition_idx, node->size);
+    // LOG("partition_idx: %d, len: %d\n", partition_idx, node->size);
     node_tuple_set_tombstone(node, partition_idx);
     for (__u32 j = 0, k = partition_idx + 1; k < node->size; k++, j++)
     {
@@ -369,12 +370,16 @@ void internal_node_split(struct node *node, struct node *new_node, __u32 partiti
 
     new_node->size = node->size - (partition_idx + 1);
     node->size -= new_node->size + 1;
+    ASSERT(node->size > 0);
+    ASSERT(new_node->size > 0);
+    ASSERT(new_node->size + node->size == before_count - 1);
 }
 
 void leaf_node_split(struct node *node, struct node *new_node, __u32 partition_idx)
 {
-    ASSERT(node->size >= 0);
+    ASSERT(node->size > 0);
     ASSERT(new_node->size == 0);
+    __u32 before_count = node->size;
     struct cell_ptr *cell_ptrs = node_cells(node);
     struct cell_ptr *new_cell_ptrs = node_cells(new_node);
     struct cell *cell;
@@ -395,7 +400,8 @@ void leaf_node_split(struct node *node, struct node *new_node, __u32 partition_i
     new_node->size = node->size - partition_idx;
     node->size -= new_node->size;
     ASSERT(node->size >= 0);
-    ASSERT(new_node->size >= 0);
+    ASSERT(new_node->size > 0);
+    ASSERT(new_node->size + node->size == before_count);
 }
 
 int node_delete_key(struct node *node, __u8 *key, __u32 key_size)
