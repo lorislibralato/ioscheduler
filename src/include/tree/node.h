@@ -77,9 +77,9 @@ int __key_compare(__u8 *cell_key, __u32 cell_key_size, __u8 *key, __u32 key_size
 
 int key_compare(struct node *node, struct cell_ptr *cell_p, __u8 *key, __u32 key_size);
 
-struct node *internal_node_split(struct node *node, __u32 partition_idx);
+void internal_node_split(struct node *node, struct node *new_node, __u32 partition_idx);
 
-struct node *leaf_node_split(struct node *node, __u32 partition_idx);
+void leaf_node_split(struct node *node, struct node *new_node, __u32 partition_idx);
 
 __u32 node_partition_idx(struct node *node);
 

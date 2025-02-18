@@ -319,7 +319,6 @@ int node_is_root(struct node *node)
     return (node->flags & BTREE_NODE_FLAGS_ROOT) != 0;
 }
 
-
 int node_insert_nonfull(struct node *leaf, __u32 idx, __u8 *key, __u32 key_size, __u8 *value, __u32 value_size)
 {
     __u32 offset = node_get_free_offset(leaf, key_size, value_size);
@@ -331,7 +330,7 @@ int node_insert_nonfull(struct node *leaf, __u32 idx, __u8 *key, __u32 key_size,
 
 __u32 node_partition_idx(struct node *node)
 {
-
+    ASSERT(node->size >= 0);
     struct cell_ptr *cell_ptrs = node_cells(node);
     struct cell *cell;
 
@@ -345,13 +344,10 @@ __u32 node_partition_idx(struct node *node)
     return i;
 }
 
-struct node *internal_node_split(struct node *node, __u32 partition_idx)
+void internal_node_split(struct node *node, struct node *new_node, __u32 partition_idx)
 {
-    struct node *new_node = btree_node_alloc();
-    ASSERT(new_node);
-
-    node_init(new_node, 0);
-
+    ASSERT(node->size >= 0);
+    ASSERT(new_node->size == 0);
     struct cell_ptr *cell_ptrs = node_cells(node);
     struct cell_ptr *new_cell_ptrs = node_cells(new_node);
     struct cell *cell;
@@ -359,7 +355,9 @@ struct node *internal_node_split(struct node *node, __u32 partition_idx)
     // write first half to new node, stop when node is half empty
     // TODO: write last half to the new node, and keep the first half in the current node, if needed clean the node
 
-    for (__u32 j = 0, k = partition_idx; k < node->size; k++, j++)
+    LOG("partition_idx: %d, len: %d\n", partition_idx, node->size);
+    node_tuple_set_tombstone(node, partition_idx);
+    for (__u32 j = 0, k = partition_idx + 1; k < node->size; k++, j++)
     {
         cell = node_cell_from_ptr(node, &cell_ptrs[k]);
         new_node->cell_offset -= sizeof(*cell) + cell->key_size;
@@ -369,19 +367,14 @@ struct node *internal_node_split(struct node *node, __u32 partition_idx)
         node_tuple_set_tombstone(node, k);
     }
 
-    new_node->size = node->size - partition_idx;
-    node->size -= new_node->size;
-
-    return new_node;
+    new_node->size = node->size - (partition_idx + 1);
+    node->size -= new_node->size + 1;
 }
 
-struct node *leaf_node_split(struct node *node, __u32 partition_idx)
+void leaf_node_split(struct node *node, struct node *new_node, __u32 partition_idx)
 {
-    struct node *new_node = btree_node_alloc();
-    ASSERT(new_node);
-
-    node_init(new_node, BTREE_NODE_FLAGS_LEAF);
-
+    ASSERT(node->size >= 0);
+    ASSERT(new_node->size == 0);
     struct cell_ptr *cell_ptrs = node_cells(node);
     struct cell_ptr *new_cell_ptrs = node_cells(new_node);
     struct cell *cell;
@@ -401,8 +394,8 @@ struct node *leaf_node_split(struct node *node, __u32 partition_idx)
 
     new_node->size = node->size - partition_idx;
     node->size -= new_node->size;
-
-    return new_node;
+    ASSERT(node->size >= 0);
+    ASSERT(new_node->size >= 0);
 }
 
 int node_delete_key(struct node *node, __u8 *key, __u32 key_size)
