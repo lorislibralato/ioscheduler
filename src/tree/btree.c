@@ -48,6 +48,10 @@ int btree_insert(struct btree *btree, __u8 *key, __u32 key_size, __u8 *value, __
     {
         __u32 idx;
         ret = node_bin_search(node, key, key_size, &idx);
+        if (ret) {
+            LOG("key %.*s already exists\n", key_size, key);
+            return 1;
+        }
         ASSERT(idx >= 0);
 
         if (idx < node->size)
@@ -210,6 +214,8 @@ int btree_insert(struct btree *btree, __u8 *key, __u32 key_size, __u8 *value, __
                     node_set_rightmost_child(f_node, child_new_node);
 
                 __u32 off = node_get_free_offset(f_node, child_partition->key_size, 0);
+                if (off == 0)
+                    debug_node(f_node, 1, 1);
                 ASSERT(off > 0);
                 node_insert_internal_cell(f_node, off, idx, cell_get_key(child_partition), child_partition->key_size, child_node);
             }
@@ -234,7 +240,7 @@ int btree_insert(struct btree *btree, __u8 *key, __u32 key_size, __u8 *value, __
     node_insert_leaf_cell(leaf_node, off, idx, key, key_size, value, value_size);
     btree->count++;
 
-    return ret;
+    return 0;
 }
 
 struct node *btree_node_alloc(void)

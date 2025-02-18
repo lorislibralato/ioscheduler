@@ -43,15 +43,13 @@ void debug_node_cell(struct node *node, struct cell *cell)
 void debug_tombstone(struct node *node)
 {
     struct cell *cell = node_cell_from_offset(node, node->tombstone_offset);
-    struct cell *next_cell;
 
-    while ((__u8 *)cell != (__u8 *)node)
+    while (cell != NULL)
     {
         LOG("tombstone: %p\n", cell);
         LOG("tombstone_size: %u\n", cell->tombstone_size);
-        next_cell = node_cell_from_offset(node, cell->next_off);
-        LOG("next_off: %p\n", next_cell);
-        cell = next_cell;
+        cell = node_cell_from_offset(node, cell->next_off);
+        LOG("next_off: %p\n", cell);
         LOG("\n");
     }
 }
@@ -235,7 +233,7 @@ __u32 offset_from_cell(struct node *node, struct cell *cell)
 
 int node_is_full(struct node *node, __u32 key_size, __u32 value_size)
 {
-    __u32 hdr_offset_limit = sizeof(struct node) + sizeof(struct cell_ptr) * (node->size + 1);
+    __u32 hdr_offset_limit = sizeof(struct node) + sizeof(struct cell_ptr) * node->size;
     __u32 free_space = node->cell_offset - hdr_offset_limit;
     __u32 new_cell_size = ALIGN(key_size + value_size + sizeof(struct cell), sizeof(__u32));
 
@@ -259,7 +257,7 @@ int node_is_full(struct node *node, __u32 key_size, __u32 value_size)
 
 __u32 node_get_free_offset(struct node *node, __u32 key_size, __u32 value_size)
 {
-    __u32 hdr_offset_limit = sizeof(struct node) + sizeof(struct cell_ptr) * (node->size + 1);
+    __u32 hdr_offset_limit = sizeof(struct node) + sizeof(struct cell_ptr) * node->size;
     __u32 free_space = node->cell_offset - hdr_offset_limit;
     __u32 new_cell_size = ALIGN(key_size + value_size + sizeof(struct cell), sizeof(__u32));
     __u32 offset;

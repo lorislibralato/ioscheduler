@@ -2,12 +2,13 @@
 #define DEBUG
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 #include "../src/include/utils.h"
 #include "../src/include/tree/btree.h"
 #include "../src/include/tree/node.h"
 #include "../src/include/tree/cell.h"
 
-#define TUPLE_COUNT (100*1000)
+#define TUPLE_COUNT (100 * 1024 * 1024)
 
 void validate_order(struct node *node, struct cell *lower_limit, struct cell *upper_limit)
 {
@@ -110,36 +111,48 @@ void tree_info(struct node *node, __u32 *leaf, __u32 *internal, __u32 *tuple)
 int main()
 {
     struct btree btree;
-    int ret;
+    int err;
 
-    ret = btree_init(&btree);
-    ASSERT(!ret);
+    err = btree_init(&btree);
+    ASSERT(!err);
 
-    __u8 key[64];
-    __u8 value[128];
+    __u8 key[16];
+    __u8 value[64];
 
-    for (__s32 i = 1; i <= TUPLE_COUNT; i++)
+    char *key_prefix = "key-0x";
+    char *val_prefix = "value-0x";
+
+    // LOG("%lld >= %lld\n", ((__s64)ARRAY_LEN(key) - (__s64)strlen(key_prefix)), ((__s64)ceil(log(TUPLE_COUNT) / log(16) + 2)));
+    // LOG("%lld >= %lld\n", ((__s64)ARRAY_LEN(value) - (__s64)strlen(val_prefix)), ((__s64)ceil(log(TUPLE_COUNT) / log(16) + 2)));
+
+    ASSERT(((__s64)ARRAY_LEN(key) - (__s64)strlen(key_prefix)) >= ((__s64)ceil(log(TUPLE_COUNT) / log(16) + 2)));
+    ASSERT(((__s64)ARRAY_LEN(value) - (__s64)strlen(val_prefix)) >= ((__s64)ceil(log(TUPLE_COUNT) / log(16) + 2)));
+
+    for (__u32 i = 1; i <= TUPLE_COUNT; i++)
     {
-        snprintf((char *)key, ARRAY_LEN(key), "key-%.4x", i);
-        snprintf((char *)value, ARRAY_LEN(value), "value-%.4x", i);
+        snprintf((char *)key, ARRAY_LEN(key), "%s%.*d", key_prefix, ((int)(__s64)ceil(log(TUPLE_COUNT) / log(16) + 2)), i);
+        snprintf((char *)value, ARRAY_LEN(value), "%s%.*d", val_prefix, ((int)(__s64)ceil(log(TUPLE_COUNT) / log(16) + 2)), i);
 
-        LOG("SET(%d) %.*s = %.*s\n", i, (int)ARRAY_LEN(key), (char *)key, (int)ARRAY_LEN(value), (char *)value);
+        // LOG("SET(%d) %.*s = %.*s\n", i, (int)ARRAY_LEN(key), (char *)key, (int)ARRAY_LEN(value), (char *)value);
 
-        ret = btree_insert(&btree, key, ARRAY_LEN(key), value, ARRAY_LEN(value));
-        ASSERT(!ret);
+        err = btree_insert(&btree, key, ARRAY_LEN(key), value, ARRAY_LEN(value));
+        ASSERT(!err);
 
         // print_tree(btree.root, 0, 1, 0);
         // __u32 leaf = 0, internal = 0, tuple = 0;
         // tree_info(btree.root, &leaf, &internal, &tuple);
-        // LOG("LEAF NODES: %d, INTERNAL NODES: %d, TUPLES: %d\n", leaf, internal, tuple);
         // ASSERT(tuple == btree.count);
+        // LOG("LEAF NODES: %d, INTERNAL NODES: %d, TUPLES: %d\n", leaf, internal, tuple);
         // validate_order(btree.root, NULL, NULL);
     }
 
     validate_order(btree.root, NULL, NULL);
     __u32 leaf = 0, internal = 0, tuple = 0;
     tree_info(btree.root, &leaf, &internal, &tuple);
-    LOG("LEAF NODES: %d, INTERNAL NODES: %d, TUPLES: %d\n", leaf, internal, tuple);
+    LOG("LEAF NODES: %d, INTERNAL NODES: %d, TUPLES: %d RAM USED: %.3fMB FOR REAL DATA: %.3fMB\n",
+        leaf, internal, tuple,
+        (double)NODE_SIZE * (leaf + internal) / (1024 * 1024),
+        (double)tuple * (ARRAY_LEN(key) + ARRAY_LEN(value)) / (1024 * 1024));
     // print_tree(btree.root, 0, 1, 0);
 
     LOG("TEST (%s): ok\n", __FILE__);
